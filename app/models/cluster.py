@@ -1,6 +1,8 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -18,6 +20,8 @@ class Cluster(Base):
     total_source_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     independent_source_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Aggregated entity strings for fast overlap scoring; updated on each new member.
+    entity_cache: Mapped[list[Any] | None] = mapped_column(JSONB)
 
     category: Mapped["Category"] = relationship(back_populates="clusters")  # noqa: F821
     article_memberships: Mapped[list["ArticleCluster"]] = relationship(back_populates="cluster")
