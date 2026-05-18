@@ -24,6 +24,12 @@ dependencies = [
     "python-multipart>=0.0.9",
     "httpx>=0.27.0",
     "email-validator>=2.1.0",
+    "feedparser>=6.0.0",
+    "sentence-transformers>=3.0.0",
+    "spacy>=3.7.0",
+    "langdetect>=1.0.9",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.2.0",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +40,17 @@ dev = [
     "httpx>=0.27.0",
     "ruff>=0.4.0",
     "black>=24.4.0",
+    "python-semantic-release>=9.0.0",
 ]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+branch = "main"
+changelog_file = "CHANGELOG.md"
+build_command = false
+upload_to_pypi = false
+commit_message = "chore(release): v{version} [skip ci]"
+tag_format = "v{version}"
 
 [tool.ruff]
 line-length = 100

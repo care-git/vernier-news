@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Vernier News — Source Library</title>
+  </head>
+  <body>
+    <!-- Sources are organised by broad category matching the platform taxonomy. -->
+    <!-- Each outline requires: type="rss", text, title, xmlUrl, htmlUrl -->
+    <!-- outlet_id must match the outlets table; add new outlets via the seed script first. -->
+
+    <outline text="World" title="World">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+    <outline text="Politics" title="Politics">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+    <outline text="Technology" title="Technology">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+    <outline text="Science" title="Science">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+    <outline text="Business" title="Business">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+    <outline text="Health" title="Health">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+    <outline text="Environment" title="Environment">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+    <outline text="Culture" title="Culture">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+    <outline text="Sport" title="Sport">
+      <!-- feeds added in Phase 1 step 2 -->
+    </outline>
+
+  </body>
+</opml>
