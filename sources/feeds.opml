@@ -4,44 +4,114 @@
     <title>Vernier News — Source Library</title>
   </head>
   <body>
-    <!-- Sources are organised by broad category matching the platform taxonomy. -->
-    <!-- Each outline requires: type="rss", text, title, xmlUrl, htmlUrl -->
-    <!-- outlet_id must match the outlets table; add new outlets via the seed script first. -->
+    <!--
+      Feed library for sources ingested via RSS/Atom.
+
+      Each entry requires:
+        type="rss"        — required
+        text              — display name
+        xmlUrl            — RSS/Atom feed URL
+        htmlUrl           — outlet homepage (used for outlet lookup if domain attr absent)
+        domain            — bare domain matching outlets.domain in the database
+                            (e.g. "bbc.co.uk" not "www.bbc.co.uk" or "https://bbc.co.uk")
+
+      Outlets listed here with a domain that exists in the outlets table will be matched
+      automatically at ingest time. Outlets not in the database are skipped with a warning.
+      To add a new outlet, run the seed script or insert directly, then add its feed here.
+
+      Feeds confirmed working as of May 2026. Re-verify if ingestion fails for a source.
+    -->
 
     <outline text="World" title="World">
-      <!-- feeds added in Phase 1 step 2 -->
+      <outline type="rss" text="BBC News" title="BBC News"
+               domain="bbc.co.uk"
+               xmlUrl="https://feeds.bbci.co.uk/news/world/rss.xml"
+               htmlUrl="https://www.bbc.com/news/world"/>
+      <outline type="rss" text="Al Jazeera English" title="Al Jazeera English"
+               domain="aljazeera.com"
+               xmlUrl="https://www.aljazeera.com/xml/rss/all.xml"
+               htmlUrl="https://www.aljazeera.com"/>
+      <outline type="rss" text="Deutsche Welle" title="Deutsche Welle"
+               domain="dw.com"
+               xmlUrl="https://rss.dw.com/rdf/rss-en-all"
+               htmlUrl="https://www.dw.com/en"/>
+      <outline type="rss" text="France 24" title="France 24"
+               domain="france24.com"
+               xmlUrl="https://www.france24.com/en/rss"
+               htmlUrl="https://www.france24.com/en"/>
     </outline>
 
     <outline text="Politics" title="Politics">
-      <!-- feeds added in Phase 1 step 2 -->
+      <outline type="rss" text="The Guardian — World" title="The Guardian — World"
+               domain="theguardian.com"
+               xmlUrl="https://www.theguardian.com/world/rss"
+               htmlUrl="https://www.theguardian.com/world"/>
+      <outline type="rss" text="The Guardian — Politics" title="The Guardian — Politics"
+               domain="theguardian.com"
+               xmlUrl="https://www.theguardian.com/politics/rss"
+               htmlUrl="https://www.theguardian.com/politics"/>
     </outline>
 
     <outline text="Technology" title="Technology">
-      <!-- feeds added in Phase 1 step 2 -->
+      <outline type="rss" text="BBC News — Technology" title="BBC News — Technology"
+               domain="bbc.co.uk"
+               xmlUrl="https://feeds.bbci.co.uk/news/technology/rss.xml"
+               htmlUrl="https://www.bbc.com/news/technology"/>
+      <outline type="rss" text="The Guardian — Technology" title="The Guardian — Technology"
+               domain="theguardian.com"
+               xmlUrl="https://www.theguardian.com/uk/technology/rss"
+               htmlUrl="https://www.theguardian.com/technology"/>
     </outline>
 
     <outline text="Science" title="Science">
-      <!-- feeds added in Phase 1 step 2 -->
+      <outline type="rss" text="BBC News — Science" title="BBC News — Science"
+               domain="bbc.co.uk"
+               xmlUrl="https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"
+               htmlUrl="https://www.bbc.com/news/science_and_environment"/>
+      <outline type="rss" text="The Guardian — Science" title="The Guardian — Science"
+               domain="theguardian.com"
+               xmlUrl="https://www.theguardian.com/science/rss"
+               htmlUrl="https://www.theguardian.com/science"/>
     </outline>
 
     <outline text="Business" title="Business">
-      <!-- feeds added in Phase 1 step 2 -->
+      <outline type="rss" text="BBC News — Business" title="BBC News — Business"
+               domain="bbc.co.uk"
+               xmlUrl="https://feeds.bbci.co.uk/news/business/rss.xml"
+               htmlUrl="https://www.bbc.com/news/business"/>
+      <outline type="rss" text="The Guardian — Business" title="The Guardian — Business"
+               domain="theguardian.com"
+               xmlUrl="https://www.theguardian.com/business/rss"
+               htmlUrl="https://www.theguardian.com/business"/>
     </outline>
 
     <outline text="Health" title="Health">
-      <!-- feeds added in Phase 1 step 2 -->
+      <outline type="rss" text="BBC News — Health" title="BBC News — Health"
+               domain="bbc.co.uk"
+               xmlUrl="https://feeds.bbci.co.uk/news/health/rss.xml"
+               htmlUrl="https://www.bbc.com/news/health"/>
+      <outline type="rss" text="The Guardian — Health" title="The Guardian — Health"
+               domain="theguardian.com"
+               xmlUrl="https://www.theguardian.com/society/health/rss"
+               htmlUrl="https://www.theguardian.com/society/health"/>
     </outline>
 
     <outline text="Environment" title="Environment">
-      <!-- feeds added in Phase 1 step 2 -->
+      <outline type="rss" text="The Guardian — Environment" title="The Guardian — Environment"
+               domain="theguardian.com"
+               xmlUrl="https://www.theguardian.com/environment/rss"
+               htmlUrl="https://www.theguardian.com/environment"/>
     </outline>
 
-    <outline text="Culture" title="Culture">
-      <!-- feeds added in Phase 1 step 2 -->
-    </outline>
-
-    <outline text="Sport" title="Sport">
-      <!-- feeds added in Phase 1 step 2 -->
+    <outline text="Investigative" title="Investigative">
+      <outline type="rss" text="ProPublica" title="ProPublica"
+               domain="propublica.org"
+               xmlUrl="https://feeds.propublica.org/propublica/main"
+               htmlUrl="https://www.propublica.org"/>
+      <outline type="rss" text="The Intercept" title="The Intercept"
+               domain="theintercept.com"
+               xmlUrl="https://theintercept.com/feed/?rss"
+               htmlUrl="https://theintercept.com"/>
     </outline>
 
   </body>

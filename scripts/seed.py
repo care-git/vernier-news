@@ -27,37 +27,38 @@ CATEGORIES = [
 
 # Starter outlet list — political_leaning_lr sourced from MBFC public dataset
 # Scale: -1.0 (far left) to 1.0 (far right); 0.0 = centre
+# rss_feed_url: main feed URL where confirmed; None where unverified (add via feeds.opml or update later)
 OUTLETS = [
-    ("BBC News", "bbc.co.uk", "GB", "en", 0.0, "MBFC"),
-    ("Reuters", "reuters.com", "GB", "en", 0.0, "MBFC"),
-    ("Associated Press", "apnews.com", "US", "en", 0.0, "MBFC"),
-    ("Al Jazeera English", "aljazeera.com", "QA", "en", -0.1, "MBFC"),
-    ("The Guardian", "theguardian.com", "GB", "en", -0.35, "MBFC"),
-    ("The New York Times", "nytimes.com", "US", "en", -0.25, "MBFC"),
-    ("The Washington Post", "washingtonpost.com", "US", "en", -0.25, "MBFC"),
-    ("The Wall Street Journal", "wsj.com", "US", "en", 0.2, "MBFC"),
-    ("Fox News", "foxnews.com", "US", "en", 0.55, "MBFC"),
-    ("MSNBC", "msnbc.com", "US", "en", -0.5, "MBFC"),
-    ("CNN", "cnn.com", "US", "en", -0.2, "MBFC"),
-    ("The Economist", "economist.com", "GB", "en", 0.1, "MBFC"),
-    ("Financial Times", "ft.com", "GB", "en", 0.1, "MBFC"),
-    ("Der Spiegel", "spiegel.de", "DE", "de", -0.2, "MBFC"),
-    ("Le Monde", "lemonde.fr", "FR", "fr", -0.15, "MBFC"),
-    ("El País", "elpais.com", "ES", "es", -0.15, "MBFC"),
-    ("NHK World", "nhk.or.jp", "JP", "en", 0.0, "MBFC"),
-    ("France 24", "france24.com", "FR", "en", 0.0, "MBFC"),
-    ("Deutsche Welle", "dw.com", "DE", "en", 0.0, "MBFC"),
-    ("The Times", "thetimes.co.uk", "GB", "en", 0.2, "MBFC"),
-    ("The Daily Telegraph", "telegraph.co.uk", "GB", "en", 0.4, "MBFC"),
-    ("The Independent", "independent.co.uk", "GB", "en", -0.15, "MBFC"),
-    ("The Spectator", "spectator.co.uk", "GB", "en", 0.45, "MBFC"),
-    ("New Statesman", "newstatesman.com", "GB", "en", -0.4, "MBFC"),
-    ("ProPublica", "propublica.org", "US", "en", -0.3, "MBFC"),
-    ("The Intercept", "theintercept.com", "US", "en", -0.55, "MBFC"),
-    ("Axios", "axios.com", "US", "en", 0.0, "MBFC"),
-    ("Politico", "politico.com", "US", "en", -0.05, "MBFC"),
-    ("Bloomberg", "bloomberg.com", "US", "en", 0.05, "MBFC"),
-    ("Vice News", "vice.com", "US", "en", -0.4, "MBFC"),
+    ("BBC News", "bbc.co.uk", "GB", "en", 0.0, "MBFC", "https://feeds.bbci.co.uk/news/rss.xml"),
+    ("Reuters", "reuters.com", "GB", "en", 0.0, "MBFC", None),
+    ("Associated Press", "apnews.com", "US", "en", 0.0, "MBFC", None),
+    ("Al Jazeera English", "aljazeera.com", "QA", "en", -0.1, "MBFC", "https://www.aljazeera.com/xml/rss/all.xml"),
+    ("The Guardian", "theguardian.com", "GB", "en", -0.35, "MBFC", "https://www.theguardian.com/world/rss"),
+    ("The New York Times", "nytimes.com", "US", "en", -0.25, "MBFC", None),
+    ("The Washington Post", "washingtonpost.com", "US", "en", -0.25, "MBFC", None),
+    ("The Wall Street Journal", "wsj.com", "US", "en", 0.2, "MBFC", None),
+    ("Fox News", "foxnews.com", "US", "en", 0.55, "MBFC", None),
+    ("MSNBC", "msnbc.com", "US", "en", -0.5, "MBFC", None),
+    ("CNN", "cnn.com", "US", "en", -0.2, "MBFC", None),
+    ("The Economist", "economist.com", "GB", "en", 0.1, "MBFC", None),
+    ("Financial Times", "ft.com", "GB", "en", 0.1, "MBFC", None),
+    ("Der Spiegel", "spiegel.de", "DE", "de", -0.2, "MBFC", None),
+    ("Le Monde", "lemonde.fr", "FR", "fr", -0.15, "MBFC", None),
+    ("El País", "elpais.com", "ES", "es", -0.15, "MBFC", None),
+    ("NHK World", "nhk.or.jp", "JP", "en", 0.0, "MBFC", None),
+    ("France 24", "france24.com", "FR", "en", 0.0, "MBFC", "https://www.france24.com/en/rss"),
+    ("Deutsche Welle", "dw.com", "DE", "en", 0.0, "MBFC", "https://rss.dw.com/rdf/rss-en-all"),
+    ("The Times", "thetimes.co.uk", "GB", "en", 0.2, "MBFC", None),
+    ("The Daily Telegraph", "telegraph.co.uk", "GB", "en", 0.4, "MBFC", None),
+    ("The Independent", "independent.co.uk", "GB", "en", -0.15, "MBFC", None),
+    ("The Spectator", "spectator.co.uk", "GB", "en", 0.45, "MBFC", None),
+    ("New Statesman", "newstatesman.com", "GB", "en", -0.4, "MBFC", None),
+    ("ProPublica", "propublica.org", "US", "en", -0.3, "MBFC", "https://feeds.propublica.org/propublica/main"),
+    ("The Intercept", "theintercept.com", "US", "en", -0.55, "MBFC", "https://theintercept.com/feed/?rss"),
+    ("Axios", "axios.com", "US", "en", 0.0, "MBFC", None),
+    ("Politico", "politico.com", "US", "en", -0.05, "MBFC", None),
+    ("Bloomberg", "bloomberg.com", "US", "en", 0.05, "MBFC", None),
+    ("Vice News", "vice.com", "US", "en", -0.4, "MBFC", None),
 ]
 
 
@@ -70,7 +71,7 @@ async def seed() -> None:
                 db.add(Category(name=name, slug=slug))
 
         # Outlets
-        for name, domain, country, lang, leaning, source in OUTLETS:
+        for name, domain, country, lang, leaning, source, rss_feed_url in OUTLETS:
             existing = await db.execute(select(Outlet).where(Outlet.domain == domain))
             if existing.scalar_one_or_none() is None:
                 db.add(
@@ -81,6 +82,7 @@ async def seed() -> None:
                         language_primary=lang,
                         political_leaning_lr=leaning,
                         political_leaning_source=source,
+                        rss_feed_url=rss_feed_url,
                         active=True,
                     )
                 )
