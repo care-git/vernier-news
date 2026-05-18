@@ -16,6 +16,7 @@ class Outlet(Base):
     political_leaning_source: Mapped[str | None] = mapped_column(String(100))
     parent_org_name: Mapped[str | None] = mapped_column(String(255))
     rss_feed_url: Mapped[str | None] = mapped_column(Text)
+    wire_service: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     articles: Mapped[list["Article"]] = relationship(back_populates="outlet")  # noqa: F821
