@@ -32,3 +32,8 @@ htmlcov/
 
 # Migrations — keep versions, ignore pyc
 migrations/versions/__pycache__/
+
+# Planning files
+CONCEPT.md
+PROJECT.md
+HANDOFF.md
