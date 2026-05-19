@@ -22,7 +22,7 @@ class Article(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     author: Mapped[str | None] = mapped_column(String(255))
-    collection_source: Mapped[str | None] = mapped_column(String(50))  # rss, api, scrape
+    collection_source: Mapped[str | None] = mapped_column(Text)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
     wire_flag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     wire_tier: Mapped[int | None] = mapped_column(Integer)  # 0–4; None until computed
