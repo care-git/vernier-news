@@ -146,9 +146,9 @@ LICENSE                 — AGPL-3.0
 
 ---
 
-## Phase 1 — data pipeline
+## Phase 1 — data pipeline — complete
 
-Steps 1–7 are complete. Step 8 (OpenClaw integration) is the immediate next task.
+All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ articles ingested, 600+ clusters, all 31 outlets active.
 
 ### Completed steps
 
@@ -156,11 +156,12 @@ Steps 1–7 are complete. Step 8 (OpenClaw integration) is the immediate next ta
 2. **RSS/OPML ingestion** — `app/pipeline/ingestion/rss.py`; domain-based outlet lookup via OPML `domain` attribute
 3. **Deduplication + embeddings** — `app/pipeline/dedup.py`; sentence-transformers `all-MiniLM-L6-v2` (384-dim), URL dedup then cosine < 0.01 within 72h
 4. **Clustering** — `app/pipeline/clustering.py`; spaCy NER + pgvector cosine + Jaccard, combined score threshold 0.45
-5. **Categorisation** — `app/pipeline/categorise.py`; Ollama (Mistral 7B), graceful failure if Ollama is unavailable
+5. **Categorisation** — `app/pipeline/categorise.py`; Ollama (Mistral 7B), graceful failure if Ollama is unavailable. Articles remain uncategorised on VPS until Phase 3 (Ollama on VPS).
 6. **Redis caching** — `app/cache/clusters.py` + `app/cache/digest.py`; `cluster_summary:{id}` and `digest:{user_id}`, 1h TTL
 7. **Celery tasks + API connectors** — `app/pipeline/tasks.py`; 5 tasks, 6 API connectors. Beat schedule:
    - `ingest_feeds` + `categorise_pending` every 30 minutes
    - `precompute_cluster_summaries` + `precompute_digests` every hour
+8. **OpenClaw integration** — Telegram bot `@vernier_monitor_bot`, four AgentSkills (health, ingest, clusters, sources), OpenClaw running as user systemd service (`openclaw-gateway`)
 
 ### API connector key status
 
@@ -168,49 +169,35 @@ Steps 1–7 are complete. Step 8 (OpenClaw integration) is the immediate next ta
 |---|---|---|
 | GDELT | No | — |
 | Hacker News | No | — |
-| Guardian | Yes — `GUARDIAN_API_KEY` | VPS `.env` |
-| GNews | Yes — `GNEWS_API_KEY` | VPS `.env` |
-| Currents | Yes — `CURRENTS_API_KEY` | VPS `.env` |
-| NYT | Yes — `NYT_API_KEY` | VPS `.env` |
+| Guardian | Yes — `GUARDIAN_API_KEY` | VPS `.env` ✓ |
+| GNews | Yes — `GNEWS_API_KEY` | VPS `.env` ✓ |
+| Currents | Yes — `CURRENTS_API_KEY` | VPS `.env` ✓ |
+| NYT | Yes — `NYT_API_KEY` | VPS `.env` ✓ |
 
-GDELT and HN are active immediately. The others activate once their key is present in `.env` — no code changes needed.
+### OpenClaw — operational notes
 
-### Step 8 — OpenClaw integration (next task)
+- **Service:** `systemctl --user status openclaw-gateway`
+- **Logs:** `~/.openclaw/logs/` or `openclaw gateway status`
+- **Skills location:** `~/.openclaw/workspace/skills/vernier-{health,ingest,clusters,sources}/`
+- **Skills source:** `~/vernier-news/openclaw/skills/` (version controlled). If skills are updated in the repo, re-copy with `cp -r ~/vernier-news/openclaw/skills/vernier-* ~/.openclaw/workspace/skills/` — OpenClaw blocks symlinks that escape the workspace root.
+- **Admin key:** `VERNIER_ADMIN_KEY` set in the systemd service override at `~/.config/systemd/user/openclaw-gateway.service.d/override.conf` and in `~/vernier-news/.env` as `ADMIN_API_KEY`
+- **Model:** `anthropic/claude-haiku-4-5`. Switch to local Ollama in Phase 3 once Ollama is on the VPS.
 
-OpenClaw (formerly Clawdbot) is a self-hosted AI agent gateway — a Node.js process that connects a chat platform (Telegram, in this project) to an AI model and executes tasks via a skills system. Each skill is a directory containing a `SKILL.md` file that tells the agent what the skill does and when to invoke it.
+### Known fixes applied during Phase 1
 
-Its role here is as the **developer-facing monitoring and control interface** for the pipeline. Pipeline orchestration remains owned by Celery Beat; OpenClaw surfaces operational state and accepts manual triggers via Telegram messages.
-
-The integration involves:
-- Deploy OpenClaw on the VPS alongside existing services
-- Connect it to a Telegram bot
-- Build four AgentSkills that wrap the FastAPI backend and Celery task queue:
-  - **ingest** — triggers a feed ingestion run on demand, returns article count and source failures
-  - **health** — queries Celery queue depth, Redis cache freshness, and DB row counts
-  - **cluster** — returns clustering stats for the last 24 hours (created, merged, dormant)
-  - **source** — lists active sources, flags any that have failed to fetch in the last cycle
-
-### After Phase 1
-
-Before starting Phase 2, do a smoke test to confirm the pipeline is running end-to-end:
-
-```bash
-ssh deploy@95.217.177.243
-docker compose exec worker celery -A app.worker:celery_app call pipeline.ingest_feeds
-# then check logs:
-docker compose logs --tail=50 worker
-```
-
-If `ingest_feeds` is logging saved article counts, the pipeline is working.
+- `app/database.py` — `NullPool` added to prevent asyncio event loop conflicts between Celery tasks and the SQLAlchemy async engine
+- `app/models/article.py` — `collection_source` widened from `String(50)` to `Text`; RSS ingestion stores full feed URLs (`rss:<url>`) which exceeded the original limit
+- `Makefile` — `migrate`, `migration`, and `seed` targets updated to run via `docker compose exec api` (alembic is not installed on the VPS host)
 
 ---
 
 ## Immediate next steps
 
-1. **OpenClaw integration** (Phase 1, Step 8) — see above
+1. ~~**OpenClaw integration**~~ — done
 2. ~~**Add API keys to VPS `.env`**~~ — done
-3. **Run `make test`** — tests have never been run; need a local Docker environment up
-4. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Doesn't block Phase 2 or 3.
+3. **Phase 2 — MVP Clients** — Flutter Web PWA + Python CLI (see `PROJECT.md` Phase 2)
+4. **Run `make test`** — tests have never been run; needs local Docker environment up
+5. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Doesn't block Phase 2 or 3.
 
 ---
 
