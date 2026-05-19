@@ -45,11 +45,13 @@ def parse_opml(opml_path: str) -> list[dict]:
             logger.warning("OPML entry missing domain, skipping: %s", xml_url)
             continue
 
-        feeds.append({
-            "url": xml_url,
-            "domain": domain,
-            "name": outline.get("text") or outline.get("title") or xml_url,
-        })
+        feeds.append(
+            {
+                "url": xml_url,
+                "domain": domain,
+                "name": outline.get("text") or outline.get("title") or xml_url,
+            }
+        )
 
     return feeds
 
@@ -66,7 +68,9 @@ def ingest_feed(feed_url: str, outlet_id: int) -> list[NormalisedArticle]:
         return []
 
     if parsed.get("bozo") and not parsed.entries:
-        logger.warning("Malformed feed or fetch error for %s: %s", feed_url, parsed.get("bozo_exception"))
+        logger.warning(
+            "Malformed feed or fetch error for %s: %s", feed_url, parsed.get("bozo_exception")
+        )
         return []
 
     articles = []
@@ -91,7 +95,9 @@ def ingest_opml(opml_path: str, outlet_map: dict[str, int]) -> list[NormalisedAr
     for feed in feeds:
         outlet_id = outlet_map.get(feed["domain"])
         if outlet_id is None:
-            logger.warning("No outlet found for domain '%s', skipping feed %s", feed["domain"], feed["url"])
+            logger.warning(
+                "No outlet found for domain '%s', skipping feed %s", feed["domain"], feed["url"]
+            )
             continue
         articles.extend(ingest_feed(feed["url"], outlet_id))
 

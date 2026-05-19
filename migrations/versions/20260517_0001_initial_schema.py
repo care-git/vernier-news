@@ -5,16 +5,17 @@ Revises:
 Create Date: 2026-05-17
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 from pgvector.sqlalchemy import Vector
 
 revision: str = "0001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -117,9 +118,7 @@ def upgrade() -> None:
 
     op.create_table(
         "user_preferences",
-        sa.Column(
-            "user_id", sa.Integer, sa.ForeignKey("users.id"), primary_key=True
-        ),
+        sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id"), primary_key=True),
         sa.Column("categories", sa.dialects.postgresql.JSONB),
         sa.Column("depth_preference", sa.String(20)),
         sa.Column("digest_time", sa.Time(timezone=True)),

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 _TOP_STORIES = "https://hacker-news.firebaseio.com/v1/topstories.json"
 _ITEM = "https://hacker-news.firebaseio.com/v1/item/{}.json"
-_FETCH_COUNT = 30   # top N stories per run
-_CONCURRENCY = 5    # simultaneous item requests
+_FETCH_COUNT = 30  # top N stories per run
+_CONCURRENCY = 5  # simultaneous item requests
 _TIMEOUT = 15.0
 
 
@@ -40,7 +40,7 @@ async def fetch(outlet_map: dict[str, int]) -> list[NormalisedArticle]:
         try:
             resp = await client.get(_TOP_STORIES)
             resp.raise_for_status()
-            top_ids: list[int] = resp.json()[: _FETCH_COUNT]
+            top_ids: list[int] = resp.json()[:_FETCH_COUNT]
         except Exception as exc:
             logger.error("HN top stories fetch failed: %s", exc)
             return []
@@ -62,7 +62,7 @@ async def fetch(outlet_map: dict[str, int]) -> list[NormalisedArticle]:
         title = item.get("title", "").strip()
         external_url = item.get("url", "")
         hn_url = f"https://news.ycombinator.com/item?id={item['id']}"
-        published_at = datetime.fromtimestamp(item.get("time", 0), tz=timezone.utc)
+        published_at = datetime.fromtimestamp(item.get("time", 0), tz=UTC)
 
         if external_url:
             domain = urlparse(external_url).netloc.removeprefix("www.")
@@ -82,18 +82,20 @@ async def fetch(outlet_map: dict[str, int]) -> list[NormalisedArticle]:
         if not title:
             continue
 
-        articles.append(NormalisedArticle(
-            url=url,
-            outlet_id=outlet_id,
-            title=title,
-            body="",   # HN does not provide article body
-            summary="",
-            author=item.get("by") or None,
-            language="en",
-            published_at=published_at,
-            collected_at=datetime.now(timezone.utc),
-            collection_source="api:hackernews",
-        ))
+        articles.append(
+            NormalisedArticle(
+                url=url,
+                outlet_id=outlet_id,
+                title=title,
+                body="",  # HN does not provide article body
+                summary="",
+                author=item.get("by") or None,
+                language="en",
+                published_at=published_at,
+                collected_at=datetime.now(UTC),
+                collection_source="api:hackernews",
+            )
+        )
 
     logger.info("HN: fetched %d stories", len(articles))
     return articles

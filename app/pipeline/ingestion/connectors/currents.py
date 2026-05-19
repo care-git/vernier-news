@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -37,21 +37,25 @@ async def fetch(outlet_map: dict[str, int], api_key: str) -> list[NormalisedArti
         try:
             published_at = datetime.fromisoformat(item.get("published", ""))
         except ValueError:
-            published_at = datetime.now(timezone.utc)
+            published_at = datetime.now(UTC)
 
         body = item.get("description", "")
-        articles.append(NormalisedArticle(
-            url=url,
-            outlet_id=outlet_id,
-            title=item.get("title", ""),
-            body=body,
-            summary=body[:500],
-            author=item.get("author") or None,
-            language=item.get("language", "en"),
-            published_at=published_at,
-            collected_at=datetime.now(timezone.utc),
-            collection_source="api:currents",
-        ))
+        articles.append(
+            NormalisedArticle(
+                url=url,
+                outlet_id=outlet_id,
+                title=item.get("title", ""),
+                body=body,
+                summary=body[:500],
+                author=item.get("author") or None,
+                language=item.get("language", "en"),
+                published_at=published_at,
+                collected_at=datetime.now(UTC),
+                collection_source="api:currents",
+            )
+        )
 
-    logger.info("Currents: fetched %d articles (from %d total)", len(articles), len(data.get("news", [])))
+    logger.info(
+        "Currents: fetched %d articles (from %d total)", len(articles), len(data.get("news", []))
+    )
     return [a for a in articles if a.url and a.title]

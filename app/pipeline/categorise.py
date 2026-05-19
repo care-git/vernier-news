@@ -78,7 +78,9 @@ async def _call_ollama(prompt: str) -> str | None:
             resp.raise_for_status()
             return resp.json().get("response", "")
     except httpx.ConnectError:
-        logger.warning("Ollama not reachable at %s — article will remain uncategorised", settings.ollama_url)
+        logger.warning(
+            "Ollama not reachable at %s — article will remain uncategorised", settings.ollama_url
+        )
     except httpx.TimeoutException:
         logger.warning("Ollama timed out after %.0fs", _OLLAMA_TIMEOUT)
     except Exception as exc:
@@ -113,7 +115,9 @@ async def categorise_article(article_id: int, title: str, body: str, db: AsyncSe
     valid = [s for s in slugs if s in slug_to_id]
 
     if not valid:
-        logger.warning("no valid category slugs in model response for article %d: %r", article_id, slugs)
+        logger.warning(
+            "no valid category slugs in model response for article %d: %r", article_id, slugs
+        )
         return
 
     # Assign the first valid category as the primary one for Phase 1.

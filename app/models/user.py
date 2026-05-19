@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Time, func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -6,10 +7,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-import enum
 
-
-class UserTier(str, enum.Enum):
+class UserTier(StrEnum):
     free = "free"
     professional = "professional"
     academic = "academic"
@@ -22,9 +21,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    tier: Mapped[UserTier] = mapped_column(
-        Enum(UserTier), default=UserTier.free, nullable=False
-    )
+    tier: Mapped[UserTier] = mapped_column(Enum(UserTier), default=UserTier.free, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

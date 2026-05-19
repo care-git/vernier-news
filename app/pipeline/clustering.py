@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import spacy
 from sqlalchemy import func, select
@@ -19,7 +19,7 @@ _nlp: spacy.language.Language | None = None
 _ENTITY_LABELS = {"PERSON", "ORG", "GPE", "LOC", "EVENT", "NORP"}
 
 # Clustering thresholds — moved to DB settings table in Phase 3.
-_CANDIDATE_MAX_DISTANCE = 0.6    # similarity > 0.4 to be a candidate cluster
+_CANDIDATE_MAX_DISTANCE = 0.6  # similarity > 0.4 to be a candidate cluster
 _COMBINED_SCORE_THRESHOLD = 0.45
 _SEMANTIC_WEIGHT = 0.6
 _ENTITY_WEIGHT = 0.4
@@ -28,7 +28,12 @@ _DORMANCY_HOURS = 48
 
 # Wire tier → independence score mapping.
 _TIER_INDEPENDENCE: dict[int | None, float] = {
-    0: 0.0, 1: 0.0, 2: 0.25, 3: 0.6, 4: 1.0, None: 1.0,
+    0: 0.0,
+    1: 0.0,
+    2: 0.25,
+    3: 0.6,
+    4: 1.0,
+    None: 1.0,
 }
 
 
@@ -78,7 +83,7 @@ async def assign_cluster(
 
     Returns the cluster_id.
     """
-    cutoff = (published_at or datetime.now(timezone.utc)) - timedelta(hours=_TEMPORAL_WINDOW_HOURS)
+    cutoff = (published_at or datetime.now(UTC)) - timedelta(hours=_TEMPORAL_WINDOW_HOURS)
 
     # Find active clusters with at least one semantically close article in the window.
     candidates = await db.execute(
@@ -126,9 +131,7 @@ async def assign_cluster(
         logger.debug("new cluster %d seeded for article %d", best_cluster_id, article_id)
     else:
         # Merge entity cache with the new article's entities.
-        cluster_result = await db.execute(
-            select(Cluster).where(Cluster.id == best_cluster_id)
-        )
+        cluster_result = await db.execute(select(Cluster).where(Cluster.id == best_cluster_id))
         cluster = cluster_result.scalar_one()
         existing = set(e.lower() for e in (cluster.entity_cache or []))
         merged = list(cluster.entity_cache or []) + [
@@ -140,11 +143,13 @@ async def assign_cluster(
         )
 
     independence = _TIER_INDEPENDENCE[wire_tier]
-    db.add(ArticleCluster(
-        article_id=article_id,
-        cluster_id=best_cluster_id,
-        independence_score=independence,
-    ))
+    db.add(
+        ArticleCluster(
+            article_id=article_id,
+            cluster_id=best_cluster_id,
+            independence_score=independence,
+        )
+    )
 
     await db.flush()
     return best_cluster_id
@@ -170,7 +175,7 @@ async def update_cluster_metadata(cluster_id: int, db: AsyncSession) -> None:
     cluster.independent_source_count = round(row.independent or 0)
 
     if row.last_joined:
-        age = datetime.now(timezone.utc) - row.last_joined.replace(tzinfo=timezone.utc)
+        age = datetime.now(UTC) - row.last_joined.replace(tzinfo=UTC)
         if age > timedelta(hours=_DORMANCY_HOURS):
             cluster.active = False
 

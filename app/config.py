@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 10080   # 7 days
+    access_token_expire_minutes: int = 10080  # 7 days
     refresh_token_expire_minutes: int = 43200  # 30 days
 
     app_env: str = "development"

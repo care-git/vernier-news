@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,8 +47,9 @@ async def precompute_all_digests(db: AsyncSession) -> int:
     Returns the number of digests written to Redis.
     """
     users_result = await db.execute(
-        select(User.id, UserPreferences.categories)
-        .join(UserPreferences, UserPreferences.user_id == User.id)
+        select(User.id, UserPreferences.categories).join(
+            UserPreferences, UserPreferences.user_id == User.id
+        )
     )
     users = users_result.all()
 
@@ -66,7 +67,7 @@ async def precompute_all_digests(db: AsyncSession) -> int:
 
         digest: dict = {
             "user_id": user_id,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "categories": {},
         }
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -39,21 +39,25 @@ async def fetch(outlet_map: dict[str, int], api_key: str) -> list[NormalisedArti
                 item.get("publishedAt", "").replace("Z", "+00:00")
             )
         except ValueError:
-            published_at = datetime.now(timezone.utc)
+            published_at = datetime.now(UTC)
 
         body = item.get("content", "") or item.get("description", "")
-        articles.append(NormalisedArticle(
-            url=url,
-            outlet_id=outlet_id,
-            title=item.get("title", ""),
-            body=body,
-            summary=item.get("description", "")[:500],
-            author=None,
-            language="en",
-            published_at=published_at,
-            collected_at=datetime.now(timezone.utc),
-            collection_source="api:gnews",
-        ))
+        articles.append(
+            NormalisedArticle(
+                url=url,
+                outlet_id=outlet_id,
+                title=item.get("title", ""),
+                body=body,
+                summary=item.get("description", "")[:500],
+                author=None,
+                language="en",
+                published_at=published_at,
+                collected_at=datetime.now(UTC),
+                collection_source="api:gnews",
+            )
+        )
 
-    logger.info("GNews: fetched %d articles (from %d total)", len(articles), len(data.get("articles", [])))
+    logger.info(
+        "GNews: fetched %d articles (from %d total)", len(articles), len(data.get("articles", []))
+    )
     return [a for a in articles if a.url and a.title]

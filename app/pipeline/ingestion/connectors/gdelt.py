@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -49,23 +49,25 @@ async def fetch(outlet_map: dict[str, int]) -> list[NormalisedArticle]:
         raw_date = item.get("seendate", "")
         try:
             # GDELT seendate format: YYYYMMDDTHHMMSSZ
-            published_at = datetime.strptime(raw_date, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+            published_at = datetime.strptime(raw_date, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
         except ValueError:
-            published_at = datetime.now(timezone.utc)
+            published_at = datetime.now(UTC)
 
         title = item.get("title", "")
-        articles.append(NormalisedArticle(
-            url=url,
-            outlet_id=outlet_id,
-            title=title,
-            body="",   # GDELT does not provide body text
-            summary="",
-            author=None,
-            language=item.get("language", "unknown").lower()[:10],
-            published_at=published_at,
-            collected_at=datetime.now(timezone.utc),
-            collection_source="api:gdelt",
-        ))
+        articles.append(
+            NormalisedArticle(
+                url=url,
+                outlet_id=outlet_id,
+                title=title,
+                body="",  # GDELT does not provide body text
+                summary="",
+                author=None,
+                language=item.get("language", "unknown").lower()[:10],
+                published_at=published_at,
+                collected_at=datetime.now(UTC),
+                collection_source="api:gdelt",
+            )
+        )
 
     logger.info(
         "GDELT: fetched %d articles (from %d total)", len(articles), len(data.get("articles", []))

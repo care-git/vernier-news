@@ -36,6 +36,7 @@ async def get_cluster(
     cluster = result.scalar_one_or_none()
     if cluster is None:
         from fastapi import HTTPException, status
+
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cluster not found")
     return {
         "id": cluster.id,

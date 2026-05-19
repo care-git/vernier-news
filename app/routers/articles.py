@@ -29,5 +29,6 @@ async def get_article(
     article = result.scalar_one_or_none()
     if article is None:
         from fastapi import HTTPException, status
+
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Article not found")
     return {"id": article.id, "title": article.title, "url": article.url}

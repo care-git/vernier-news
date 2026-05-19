@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -33,7 +33,9 @@ async def admin_health(
     """DB row counts, Redis cache stats, and Celery queue depth."""
     article_count = await db.scalar(select(func.count()).select_from(Article))
     cluster_count = await db.scalar(select(func.count()).select_from(Cluster))
-    outlet_count = await db.scalar(select(func.count()).select_from(Outlet).where(Outlet.active == True))  # noqa: E712
+    outlet_count = await db.scalar(
+        select(func.count()).select_from(Outlet).where(Outlet.active.is_(True))
+    )
     uncategorised = await db.scalar(
         select(func.count()).select_from(Article).where(Article.category_id == None)  # noqa: E711
     )
@@ -70,7 +72,7 @@ async def admin_cluster_stats(
     db=Depends(get_db),
 ) -> dict[str, Any]:
     """Cluster activity over the last 24 hours."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff_24h = now - timedelta(hours=24)
     cutoff_48h = now - timedelta(hours=48)
 
@@ -78,13 +80,17 @@ async def admin_cluster_stats(
         select(func.count()).select_from(Cluster).where(Cluster.first_published_at >= cutoff_24h)
     )
     updated = await db.scalar(
-        select(func.count()).select_from(Cluster).where(
+        select(func.count())
+        .select_from(Cluster)
+        .where(
             Cluster.last_updated_at >= cutoff_24h,
             Cluster.first_published_at < cutoff_24h,
         )
     )
     dormant = await db.scalar(
-        select(func.count()).select_from(Cluster).where(
+        select(func.count())
+        .select_from(Cluster)
+        .where(
             Cluster.active == True,  # noqa: E712
             Cluster.last_updated_at < cutoff_48h,
         )

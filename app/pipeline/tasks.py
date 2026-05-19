@@ -15,7 +15,7 @@ from app.models.outlet import Outlet
 from app.pipeline.categorise import categorise_article
 from app.pipeline.clustering import assign_cluster, extract_entities, update_cluster_metadata
 from app.pipeline.dedup import persist_article
-from app.pipeline.ingestion.connectors import gdelt, gnews, currents, guardian, hackernews, nyt
+from app.pipeline.ingestion.connectors import currents, gdelt, gnews, guardian, hackernews, nyt
 from app.pipeline.ingestion.rss import ingest_feed, ingest_opml
 from app.worker import celery_app
 
@@ -33,8 +33,7 @@ def ingest_feeds() -> dict:
         async with SessionLocal() as db:
             # Build outlet_map {domain: id} for OPML domain resolution.
             outlet_rows = await db.execute(
-                select(Outlet.domain, Outlet.id, Outlet.rss_feed_url)
-                .where(Outlet.active == True)  # noqa: E712
+                select(Outlet.domain, Outlet.id, Outlet.rss_feed_url).where(Outlet.active.is_(True))
             )
             all_outlets = outlet_rows.all()
             outlet_map = {r.domain: r.id for r in all_outlets}
@@ -103,8 +102,9 @@ def cluster_pass() -> dict:
 
     async def _run() -> dict:
         async with SessionLocal() as db:
+            from sqlalchemy import exists, not_
+
             from app.models.cluster import ArticleCluster
-            from sqlalchemy import not_, exists
 
             # Find articles with no cluster membership.
             result = await db.execute(

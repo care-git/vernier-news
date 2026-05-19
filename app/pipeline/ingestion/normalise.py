@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bs4 import BeautifulSoup
-from langdetect import detect, LangDetectException
+from langdetect import LangDetectException, detect
 
 
 @dataclass
@@ -34,10 +34,10 @@ def _parse_date(entry: dict) -> datetime:
         val = entry.get(key)
         if val:
             try:
-                return datetime(*val[:6], tzinfo=timezone.utc)
+                return datetime(*val[:6], tzinfo=UTC)
             except (TypeError, ValueError):
                 continue
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _detect_language(text: str) -> str:
@@ -79,7 +79,7 @@ def normalise(raw: dict, outlet_id: int, collection_source: str) -> NormalisedAr
         author=author,
         language=language,
         published_at=published_at,
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         collection_source=collection_source,
         raw_html=raw_html,
     )

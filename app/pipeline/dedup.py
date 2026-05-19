@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
@@ -49,7 +49,7 @@ async def is_duplicate(url: str, embedding: list[float], db: AsyncSession) -> bo
     if url_check.scalar_one_or_none() is not None:
         return True
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=_DEDUP_WINDOW_HOURS)
+    cutoff = datetime.now(UTC) - timedelta(hours=_DEDUP_WINDOW_HOURS)
     sim_check = await db.execute(
         select(Article.id)
         .where(Article.published_at >= cutoff)
@@ -82,7 +82,7 @@ async def get_wire_tier(
         logger.debug("wire tier 0 (wire service outlet): %s", article.url)
         return 0, 1.0
 
-    now = article.published_at or datetime.now(timezone.utc)
+    now = article.published_at or datetime.now(UTC)
 
     async def _best_match(window_hours: int) -> tuple[int | None, float]:
         cutoff = now - timedelta(hours=window_hours)
@@ -108,24 +108,21 @@ async def get_wire_tier(
         return 1, sim_6h
 
     match_id_3h, sim_3h = await _best_match(_TIER2_WINDOW_HOURS)
-    if match_id_3h is not None:
-        if sim_3h >= _TIER2_SIMILARITY_LOW:
-            # Author byline match is an additional Tier 2 signal; check below threshold too
-            match_row = await db.execute(
-                select(Article.author).where(Article.id == match_id_3h)
+    if match_id_3h is not None and sim_3h >= _TIER2_SIMILARITY_LOW:
+        # Author byline match is an additional Tier 2 signal; check below threshold too
+        match_row = await db.execute(select(Article.author).where(Article.id == match_id_3h))
+        match_author = match_row.scalar_one_or_none()
+        author_match = (
+            article.author and match_author and article.author.lower() == match_author.lower()
+        )
+        if sim_3h < _TIER2_SIMILARITY_HIGH or author_match:
+            logger.info(
+                "wire tier 2 (sim=%.3f, author_match=%s): %s",
+                sim_3h,
+                author_match,
+                article.url,
             )
-            match_author = match_row.scalar_one_or_none()
-            author_match = (
-                article.author
-                and match_author
-                and article.author.lower() == match_author.lower()
-            )
-            if sim_3h < _TIER2_SIMILARITY_HIGH or author_match:
-                logger.info(
-                    "wire tier 2 (sim=%.3f, author_match=%s): %s",
-                    sim_3h, author_match, article.url,
-                )
-                return 2, sim_3h
+            return 2, sim_3h
 
     _, sim_4h = await _best_match(_TIER3_WINDOW_HOURS)
     if _TIER3_SIMILARITY_LOW <= sim_4h < _TIER3_SIMILARITY_HIGH:

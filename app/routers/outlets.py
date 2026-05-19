@@ -29,6 +29,7 @@ async def get_outlet(outlet_id: int, db: AsyncSession = Depends(get_db)) -> dict
     outlet = result.scalar_one_or_none()
     if outlet is None:
         from fastapi import HTTPException, status
+
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Outlet not found")
     return {
         "id": outlet.id,

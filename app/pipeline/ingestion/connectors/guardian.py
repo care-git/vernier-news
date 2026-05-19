@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -36,24 +36,24 @@ async def fetch(outlet_id: int, api_key: str) -> list[NormalisedArticle]:
         fields = item.get("fields", {})
         body = fields.get("bodyText", "")
         try:
-            published_at = datetime.fromisoformat(
-                item["webPublicationDate"].replace("Z", "+00:00")
-            )
+            published_at = datetime.fromisoformat(item["webPublicationDate"].replace("Z", "+00:00"))
         except (KeyError, ValueError):
-            published_at = datetime.now(timezone.utc)
+            published_at = datetime.now(UTC)
 
-        articles.append(NormalisedArticle(
-            url=item.get("webUrl", ""),
-            outlet_id=outlet_id,
-            title=item.get("webTitle", ""),
-            body=body,
-            summary=body[:500],
-            author=fields.get("byline") or None,
-            language="en",
-            published_at=published_at,
-            collected_at=datetime.now(timezone.utc),
-            collection_source="api:guardian",
-        ))
+        articles.append(
+            NormalisedArticle(
+                url=item.get("webUrl", ""),
+                outlet_id=outlet_id,
+                title=item.get("webTitle", ""),
+                body=body,
+                summary=body[:500],
+                author=fields.get("byline") or None,
+                language="en",
+                published_at=published_at,
+                collected_at=datetime.now(UTC),
+                collection_source="api:guardian",
+            )
+        )
 
     logger.info("Guardian: fetched %d articles", len(articles))
     return [a for a in articles if a.url and a.title]
