@@ -8,12 +8,14 @@ from sqlalchemy import select
 
 from app.cache.clusters import precompute_cluster_summaries
 from app.cache.digest import precompute_all_digests
+from app.config import settings
 from app.database import SessionLocal
 from app.models.article import Article
 from app.models.outlet import Outlet
 from app.pipeline.categorise import categorise_article
 from app.pipeline.clustering import assign_cluster, extract_entities, update_cluster_metadata
 from app.pipeline.dedup import persist_article
+from app.pipeline.ingestion.connectors import gdelt, gnews, currents, guardian, hackernews, nyt
 from app.pipeline.ingestion.rss import ingest_feed, ingest_opml
 from app.worker import celery_app
 
@@ -40,11 +42,32 @@ def ingest_feeds() -> dict:
             # Collect articles from OPML feeds.
             articles = ingest_opml(_OPML_PATH, outlet_map)
 
-            # Also fetch outlets with rss_feed_url set that aren't in the OPML.
-            opml_domains = set(outlet_map.keys())
+            # Also fetch outlets with rss_feed_url set that aren't covered by the OPML.
+            opml_domains = {d for d, _ in outlet_map.items()}
             for outlet in all_outlets:
                 if outlet.rss_feed_url and outlet.domain not in opml_domains:
                     articles.extend(ingest_feed(outlet.rss_feed_url, outlet.id))
+
+            # API connectors — each skipped gracefully if key is absent.
+            if settings.guardian_api_key:
+                guardian_id = outlet_map.get("theguardian.com")
+                if guardian_id:
+                    articles.extend(await guardian.fetch(guardian_id, settings.guardian_api_key))
+
+            if settings.nyt_api_key:
+                nyt_id = outlet_map.get("nytimes.com")
+                if nyt_id:
+                    articles.extend(await nyt.fetch(nyt_id, settings.nyt_api_key))
+
+            if settings.gnews_api_key:
+                articles.extend(await gnews.fetch(outlet_map, settings.gnews_api_key))
+
+            if settings.currents_api_key:
+                articles.extend(await currents.fetch(outlet_map, settings.currents_api_key))
+
+            # GDELT and HN require no API key.
+            articles.extend(await gdelt.fetch(outlet_map))
+            articles.extend(await hackernews.fetch(outlet_map))
 
             saved = 0
             for article in articles:

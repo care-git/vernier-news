@@ -18,5 +18,11 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "mistral"
 
+    # API connector keys — all optional; connectors silently skip if unset
+    guardian_api_key: str | None = None
+    gnews_api_key: str | None = None
+    currents_api_key: str | None = None
+    nyt_api_key: str | None = None
+
 
 settings = Settings()

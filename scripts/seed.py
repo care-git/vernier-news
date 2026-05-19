@@ -59,6 +59,7 @@ OUTLETS = [
     ("Politico", "politico.com", "US", "en", -0.05, "MBFC", None),
     ("Bloomberg", "bloomberg.com", "US", "en", 0.05, "MBFC", None),
     ("Vice News", "vice.com", "US", "en", -0.4, "MBFC", None),
+    ("Hacker News", "news.ycombinator.com", "US", "en", 0.0, None, None),
 ]
 
 
