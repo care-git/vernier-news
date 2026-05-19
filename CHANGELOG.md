@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.1.1 (2026-05-19)
+
+### Bug Fixes
+
+- **routers**: Use .is_(None/True) for correct SQL NULL and boolean comparisons
+  ([`de507a9`](https://github.com/care-git/vernier-news/commit/de507a99768bf6953f89d0edc1d8e62f0a82b7ad))
+
+### Documentation
+
+- Update markdown plan to reflect stage completion
+  ([`2f5bfb1`](https://github.com/care-git/vernier-news/commit/2f5bfb1e31dbceb6243ea56fc75a86ae87947f55))
+
+
 ## v0.1.0 (2026-05-19)
 
 ### Bug Fixes
