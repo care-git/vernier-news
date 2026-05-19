@@ -177,12 +177,18 @@ GDELT and HN are active immediately. The others activate once their key is prese
 
 ### Step 8 — OpenClaw integration (next task)
 
-OpenClaw provides structured outlet metadata (ownership, funding, country). The integration will:
-- Fetch the OpenClaw dataset
-- Match outlets in the DB by domain
-- Populate ownership/funding fields (to be added to the `Outlet` model)
+OpenClaw (formerly Clawdbot) is a self-hosted AI agent gateway — a Node.js process that connects a chat platform (Telegram, in this project) to an AI model and executes tasks via a skills system. Each skill is a directory containing a `SKILL.md` file that tells the agent what the skill does and when to invoke it.
 
-See `PROJECT.md` Section 4 for the full spec.
+Its role here is as the **developer-facing monitoring and control interface** for the pipeline. Pipeline orchestration remains owned by Celery Beat; OpenClaw surfaces operational state and accepts manual triggers via Telegram messages.
+
+The integration involves:
+- Deploy OpenClaw on the VPS alongside existing services
+- Connect it to a Telegram bot
+- Build four AgentSkills that wrap the FastAPI backend and Celery task queue:
+  - **ingest** — triggers a feed ingestion run on demand, returns article count and source failures
+  - **health** — queries Celery queue depth, Redis cache freshness, and DB row counts
+  - **cluster** — returns clustering stats for the last 24 hours (created, merged, dormant)
+  - **source** — lists active sources, flags any that have failed to fetch in the last cycle
 
 ### After Phase 1
 
@@ -202,7 +208,7 @@ If `ingest_feeds` is logging saved article counts, the pipeline is working.
 ## Immediate next steps
 
 1. **OpenClaw integration** (Phase 1, Step 8) — see above
-2. **Add API keys to VPS `.env`** — Guardian, GNews, Currents, NYT (optional but recommended)
+2. ~~**Add API keys to VPS `.env`**~~ — done
 3. **Run `make test`** — tests have never been run; need a local Docker environment up
 4. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Doesn't block Phase 2 or 3.
 

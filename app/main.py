@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.router import router as auth_router
+from app.routers.admin import router as admin_router
 from app.routers.articles import router as articles_router
 from app.routers.clusters import router as clusters_router
 from app.routers.digest import router as digest_router
@@ -27,6 +28,7 @@ app.add_middleware(
 API_PREFIX = "/api/v1"
 
 app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(admin_router, prefix=API_PREFIX)
 app.include_router(articles_router, prefix=API_PREFIX)
 app.include_router(clusters_router, prefix=API_PREFIX)
 app.include_router(outlets_router, prefix=API_PREFIX)

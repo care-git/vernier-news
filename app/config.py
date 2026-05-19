@@ -24,5 +24,8 @@ class Settings(BaseSettings):
     currents_api_key: str | None = None
     nyt_api_key: str | None = None
 
+    # Admin API key — protects /api/v1/admin/* endpoints
+    admin_api_key: str | None = None
+
 
 settings = Settings()
