@@ -15,5 +15,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_debug: bool = False
 
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "mistral"
+
 
 settings = Settings()
