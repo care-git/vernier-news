@@ -12,6 +12,48 @@ Full concept: `CONCEPT.md`. Full build plan: `PROJECT.md`. Both are v0.4, approv
 
 ---
 
+## Git workflow — mandatory reading for all contributors and Claude instances
+
+### Conventional Commits
+
+All commit messages must follow the **Conventional Commits** standard. Every message takes the form:
+
+```
+<type>(<optional scope>): <short description>
+```
+
+The type controls how semantic-release bumps the version:
+
+| Type | Meaning | Version bump |
+|---|---|---|
+| `feat:` | New feature | **MINOR** `1.4.2 → 1.5.0` |
+| `fix:` | Bug fix | **PATCH** `1.4.2 → 1.4.3` |
+| `feat!:` or footer `BREAKING CHANGE:` | Breaks backwards compatibility | **MAJOR** `1.4.2 → 2.0.0` |
+| `chore:` | Maintenance, no production change | no release |
+| `docs:` | Documentation only | no release |
+| `style:` | Formatting, whitespace | no release |
+| `refactor:` | Code restructured, no new features/fixes | no release |
+| `test:` | Adding or updating tests | no release |
+| `build:` | Build system, dependencies | no release |
+| `ci:` | CI pipeline changes | no release |
+| `perf:` | Performance improvement | patch |
+
+**Golden rule: one logical change per commit.** If you find yourself writing "and" in the description, it should be two commits. Semantic-release reads every commit individually — one `feat:` among ten `fix:` commits still triggers a minor bump for that release.
+
+### No committing from Claude
+
+Claude Code instances do **not** have access to the SSH passphrase and must never attempt to run `git commit`, `git push`, or any destructive git operation. After making code changes, output the exact commands for the developer to run:
+
+```
+git add <specific files>
+git commit -m "<type>(<scope>): <description>"
+git push
+```
+
+Break changes into separate commits where the type or scope differs. Do not batch unrelated changes into one commit.
+
+---
+
 ## Current state
 
 ### Phase 0 — complete and deployed
@@ -24,7 +66,7 @@ Phase 0 is fully running on the VPS. Health check passes, all migrations are app
 app/
   main.py               — FastAPI app, all routers registered, CORS, /health endpoint
   config.py             — pydantic-settings, extra="ignore" for POSTGRES_* vars
-  database.py           — async SQLAlchemy engine, Base, get_db dependency
+  database.py           — async SQLAlchemy engine with NullPool, Base, get_db dependency
   worker.py             — Celery app (celery_app), Beat schedule, autodiscover pipeline tasks
   redis_client.py       — aioredis client singleton
   auth/
@@ -33,17 +75,20 @@ app/
     dependencies.py     — get_current_user FastAPI dependency
     schemas.py          — RegisterRequest, LoginRequest, TokenResponse
   models/
-    article.py          — Article (pgvector embedding, wire_tier, category_id, author)
+    article.py          — Article (pgvector embedding, wire_tier, category_id, author,
+                          collection_source as Text)
     outlet.py           — Outlet (political_leaning_lr float, wire_service bool)
     cluster.py          — Cluster (entity_cache JSONB) + ArticleCluster join table
     category.py         — Category (name, slug)
-    user.py             — User (UserTier enum) + UserPreferences (JSONB)
+    user.py             — User (UserTier StrEnum) + UserPreferences (JSONB)
   routers/
     articles.py         — GET /articles/, GET /articles/{id} (auth required)
     clusters.py         — GET /clusters/, GET /clusters/{id} (auth required)
     outlets.py          — GET /outlets/, GET /outlets/{id} (public)
     users.py            — GET /users/me (auth required)
     digest.py           — GET /digest/ stub (Phase 2 deliverable)
+    admin.py            — GET /admin/health, POST /admin/ingest, GET /admin/clusters/stats,
+                          GET /admin/sources (X-Admin-Key header auth)
   pipeline/
     tasks.py            — 5 Celery tasks: ingest_feeds, cluster_pass, categorise_pending,
                           precompute_cluster_summaries_task, precompute_digests
@@ -65,17 +110,24 @@ app/
     digest.py           — precompute_all_digests(), get_digest()
 migrations/
   versions/
-    20260517_0001_initial_schema.py         — full MVP schema, pgvector extension
+    20260517_0001_initial_schema.py                        — full MVP schema, pgvector extension
     20260519_0002_add_author_wire_tier_wire_service.py
     20260519_0003_add_cluster_entity_cache.py
     20260519_0004_add_article_category_id.py
+    20260519_0005_widen_collection_source.py               — VARCHAR(50) → Text
+openclaw/
+  skills/
+    vernier-health/     — AgentSkill: pipeline health stats
+    vernier-ingest/     — AgentSkill: trigger immediate ingest
+    vernier-clusters/   — AgentSkill: 24h cluster activity
+    vernier-sources/    — AgentSkill: outlet health summary
 scripts/
   seed.py               — 10 categories + 31 outlets (incl. Hacker News), MBFC leaning data
 sources/
   feeds.opml            — RSS/Atom feeds: BBC, Al Jazeera, DW, France 24, The Guardian (×5),
                           ProPublica, The Intercept
 tests/
-  conftest.py           — async test client, per-session test DB
+  conftest.py           — NullPool engine, sync setup_db (asyncio.run), per-test async session
   test_health.py        — GET /health smoke test
   test_auth.py          — register, duplicate email, login, wrong password, /me
 docker-compose.yml      — FastAPI, PostgreSQL (pgvector), Redis, Celery worker, Celery beat
@@ -88,7 +140,17 @@ Makefile                — up, down, build, test, lint, format, migrate, migrat
 LICENSE                 — AGPL-3.0
 ```
 
-**Tests have not been run yet** — the test database requires a running PostgreSQL instance. Run `make test` after the local Docker environment is up.
+---
+
+### CI — fully passing
+
+All three CI jobs pass on push to `main`:
+
+| Job | Status | Notes |
+|---|---|---|
+| Lint | ✅ Passing | ruff + black |
+| Test | ✅ Passing | 6 tests, pgvector/pgvector:pg16 service container |
+| Release | ✅ Passing | python-semantic-release v9, current version `0.1.0` |
 
 ---
 
@@ -106,7 +168,7 @@ LICENSE                 — AGPL-3.0
 | User | `deploy` (sudo) |
 | Docker | 29.5.1 |
 | Services | All running: api, postgres, redis, worker, beat |
-| Migrations | 0001–0004 applied |
+| Migrations | 0001–0005 applied |
 | Seed data | Loaded (categories + outlets incl. Hacker News) |
 | Health check | `curl http://localhost:8000/health` → `{"status":"ok","version":"0.1.0"}` |
 
@@ -121,7 +183,7 @@ LICENSE                 — AGPL-3.0
 | Repo | `care-git/vernier-news` |
 | Visibility | Public (AGPL-3.0) |
 | CI | Lint → Test → Release (python-semantic-release) |
-| Versioning | Conventional Commits; `feat:` bumps minor, `fix:` bumps patch, `BREAKING CHANGE` bumps major |
+| Versioning | Conventional Commits — see Git workflow section above |
 
 ---
 
@@ -186,18 +248,17 @@ All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ 
 ### Known fixes applied during Phase 1
 
 - `app/database.py` — `NullPool` added to prevent asyncio event loop conflicts between Celery tasks and the SQLAlchemy async engine
-- `app/models/article.py` — `collection_source` widened from `String(50)` to `Text`; RSS ingestion stores full feed URLs (`rss:<url>`) which exceeded the original limit
+- `app/models/article.py` — `collection_source` widened from `String(50)` to `Text`; RSS ingestion stores full feed URLs (`rss:<url>`) which exceeded the original limit. Migration `0005` applied.
 - `Makefile` — `migrate`, `migration`, and `seed` targets updated to run via `docker compose exec api` (alembic is not installed on the VPS host)
+- `tests/conftest.py` — NullPool on the test engine + synchronous `setup_db` using `asyncio.run()` to prevent cross-event-loop asyncpg errors; `CREATE EXTENSION IF NOT EXISTS vector` added before `create_all`
+- `pyproject.toml` — `build_command = ""` (empty string) to skip PSR build step; `B008` added to ruff ignore list (FastAPI `Depends()` in default args is intentional)
 
 ---
 
 ## Immediate next steps
 
-1. ~~**OpenClaw integration**~~ — done
-2. ~~**Add API keys to VPS `.env`**~~ — done
-3. **Phase 2 — MVP Clients** — Flutter Web PWA + Python CLI (see `PROJECT.md` Phase 2)
-4. **Run `make test`** — tests have never been run; needs local Docker environment up
-5. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Doesn't block Phase 2 or 3.
+1. **Phase 2 — MVP Clients** — Flutter Web PWA + Python CLI (see `PROJECT.md` Phase 2)
+2. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Doesn't block Phase 2 or 3.
 
 ---
 
@@ -219,3 +280,4 @@ These are settled — not open questions:
 - **Social platforms:** Bluesky + Mastodon in Phase 4. LinkedIn + X/Twitter deferred to Phase 5/6.
 - **Payments:** Stripe. Requires UK Ltd to be in place first.
 - **Email:** Resend. Domain verified.
+- **Ollama on VPS:** Deferred to Phase 3. CPX32 (8GB RAM) cannot run Mistral 7B alongside existing services (~3.4GB used). Upgrade to CPX41 (16GB) at Phase 3 start.
