@@ -21,7 +21,7 @@ _api_key_header = APIKeyHeader(name="X-Admin-Key", auto_error=False)
 
 
 def _require_admin_key(key: str | None = Depends(_api_key_header)) -> None:
-    if settings.admin_api_key and key != settings.admin_api_key:
+    if not settings.admin_api_key or key != settings.admin_api_key:
         raise HTTPException(status_code=403, detail="invalid admin key")
 
 
@@ -37,7 +37,7 @@ async def admin_health(
         select(func.count()).select_from(Outlet).where(Outlet.active.is_(True))
     )
     uncategorised = await db.scalar(
-        select(func.count()).select_from(Article).where(Article.category_id == None)  # noqa: E711
+        select(func.count()).select_from(Article).where(Article.category_id.is_(None))
     )
 
     cluster_keys = await redis_client.keys("cluster_summary:*")
@@ -91,7 +91,7 @@ async def admin_cluster_stats(
         select(func.count())
         .select_from(Cluster)
         .where(
-            Cluster.active == True,  # noqa: E712
+            Cluster.active.is_(True),
             Cluster.last_updated_at < cutoff_48h,
         )
     )

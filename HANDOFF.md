@@ -262,6 +262,41 @@ All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ 
 
 ---
 
+## Outstanding code issues
+
+### Fix now — active bugs regardless of phase
+
+**NULL/boolean comparisons in admin router and clusters router**
+
+Two queries use Python equality operators against SQL NULL and boolean values, which can silently produce wrong results:
+
+- `app/routers/admin.py:40` — `Article.category_id == None` should be `.is_(None)`
+- `app/routers/clusters.py:18` and `app/routers/admin.py:94` — `Cluster.active == True` should be `.is_(True)`
+
+In SQL, `== NULL` evaluates to UNKNOWN rather than TRUE or FALSE, meaning the filter can silently return incorrect rows. Fix before any other work.
+
+### Fix at Phase 2 start — before the PWA ships
+
+**CORS origins**
+
+`app/main.py` currently sets `allow_origins=["*"]`. This must be tightened to `["https://vernier.news"]` before the Flutter PWA is wired to the backend. Cannot be done earlier because there is no client yet, but must not slip past Phase 2.
+
+**Admin key bypass**
+
+`app/routers/admin.py` guards admin endpoints with:
+
+```python
+if settings.admin_api_key and key != settings.admin_api_key:
+```
+
+If `ADMIN_API_KEY` is unset, the condition short-circuits and any request passes. The key is confirmed set on the VPS so this is not exploitable right now, but the guard should always enforce — remove the short-circuit so the check fails closed when the key is absent. Fix at Phase 2 start alongside the CORS change.
+
+### Defer to Phase 3 — already planned
+
+Everything else flagged in a codebase audit (rate limiting, test coverage, DB indexes, monitoring, Swagger in production, Redis TTL tuning, password strength validation, API error handling consistency) is an explicit Phase 3 deliverable per `PROJECT.md`. Do not pull this work forward — Phase 3 is the right time to calibrate against real load data.
+
+---
+
 ## Key decisions already made
 
 These are settled — not open questions:

@@ -15,7 +15,7 @@ async def list_clusters(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[dict]:
-    result = await db.execute(select(Cluster).where(Cluster.active == True).limit(50))  # noqa: E712
+    result = await db.execute(select(Cluster).where(Cluster.active.is_(True)).limit(50))
     return [
         {
             "id": c.id,
