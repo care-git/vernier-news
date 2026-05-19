@@ -21,13 +21,13 @@ format:
 	black .
 
 migrate:
-	alembic upgrade head
+	docker compose exec api alembic upgrade head
 
 migration:
-	alembic revision --autogenerate -m "$(name)"
+	docker compose exec api alembic revision --autogenerate -m "$(name)"
 
 seed:
-	python -m scripts.seed
+	docker compose exec api python -m scripts.seed
 
 logs:
 	docker compose logs -f api
