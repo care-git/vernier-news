@@ -1,6 +1,6 @@
 # Vernier News — Handoff Document
 
-*Last updated: May 2026*
+*Last updated: 20 May 2026*
 
 ---
 
@@ -64,7 +64,8 @@ Phase 0 is fully running on the VPS. Health check passes, all migrations are app
 
 ```
 app/
-  main.py               — FastAPI app, all routers registered, CORS, /health endpoint
+  main.py               — FastAPI app, all routers registered, CORS locked to vernier.news,
+                          /health endpoint
   config.py             — pydantic-settings, extra="ignore" for POSTGRES_* vars
   database.py           — async SQLAlchemy engine with NullPool, Base, get_db dependency
   worker.py             — Celery app (celery_app), Beat schedule, autodiscover pipeline tasks
@@ -88,7 +89,7 @@ app/
     users.py            — GET /users/me (auth required)
     digest.py           — GET /digest/ stub (Phase 2 deliverable)
     admin.py            — GET /admin/health, POST /admin/ingest, GET /admin/clusters/stats,
-                          GET /admin/sources (X-Admin-Key header auth)
+                          GET /admin/sources (X-Admin-Key header auth, fails closed if key unset)
   pipeline/
     tasks.py            — 5 Celery tasks: ingest_feeds, cluster_pass, categorise_pending,
                           precompute_cluster_summaries_task, precompute_digests
@@ -130,7 +131,8 @@ tests/
   conftest.py           — NullPool engine, sync setup_db (asyncio.run), per-test async session
   test_health.py        — GET /health smoke test
   test_auth.py          — register, duplicate email, login, wrong password, /me
-docker-compose.yml      — FastAPI, PostgreSQL (pgvector), Redis, Celery worker, Celery beat
+Caddyfile               — vernier.news → api:8000, www redirect, auto-TLS via Let's Encrypt
+docker-compose.yml      — Caddy, FastAPI, PostgreSQL (pgvector), Redis, Celery worker, Celery beat
 Dockerfile              — python:3.12-slim, pre-downloads all-MiniLM-L6-v2 + en_core_web_sm
 pyproject.toml          — all deps, ruff/black/pytest config, semantic-release config
 Makefile                — up, down, build, test, lint, format, migrate, migration, seed
@@ -167,12 +169,36 @@ All three CI jobs pass on push to `main`:
 | Firewall | UFW active — ports 22, 80, 443 only |
 | User | `deploy` (sudo) |
 | Docker | 29.5.1 |
-| Services | All running: api, postgres, redis, worker, beat |
+| Services | All running: caddy, api, postgres, redis, worker, beat |
 | Migrations | 0001–0005 applied |
 | Seed data | Loaded (categories + outlets incl. Hacker News) |
-| Health check | `curl http://localhost:8000/health` → `{"status":"ok","version":"0.1.0"}` |
+| Health check | `curl https://vernier.news/health` → `{"status":"ok","version":"0.1.0"}` |
+| HTTPS | Live via Caddy + Let's Encrypt. Cert auto-renews. |
 
 **Upgrade path:** CPX32 → CPX41 (16GB) before Phase 3 when Ollama moves to the VPS.
+
+#### Caddy — operational notes
+
+- **Caddyfile:** `~/vernier-news/Caddyfile` (version controlled), mounted read-only into the caddy container
+- **Certificates:** stored in `caddy_data` Docker named volume — persists across `docker compose down/up`
+- **Logs:** `docker compose logs caddy`
+- **Cloudflare SSL mode:** must remain **Full** (not Flexible) — Flexible would have Cloudflare skip cert validation, Full enforces HTTPS to origin
+- If the cert ever fails to renew, check that ports 80 and 443 are reachable and that Cloudflare is not caching `.well-known/acme-challenge/` paths (it doesn't by default)
+
+#### Docker/UFW — critical note for all infrastructure changes
+
+Docker writes iptables rules directly, bypassing UFW entirely. A `ports:` entry in `docker-compose.yml` exposes that port to the internet regardless of UFW rules. The current configuration is intentional:
+
+| Service | Host binding | Reason |
+|---|---|---|
+| caddy | `0.0.0.0:80`, `0.0.0.0:443` | Must be public — serves HTTPS |
+| api | `127.0.0.1:8000` | Loopback only — accessed via Caddy within Docker network |
+| postgres | none | Internal Docker network only |
+| redis | none | Internal Docker network only |
+
+**Never add `ports:` to postgres or redis.** If a service needs to communicate with another service, use the Docker service name (e.g., `api:8000`, `redis:6379`) — all compose services share a network automatically.
+
+**Note on port scanners:** Hetzner operates a network-level SYN proxy for DDoS protection that completes TCP handshakes on behalf of the server for all ports. External port scanners (nmap, etc.) will report every port as "open" regardless of what is actually listening. Verify real port exposure via `ss -tlnp` and `sudo iptables -t nat -S` from within the VPS, not from external scans.
 
 ---
 
@@ -194,7 +220,7 @@ All three CI jobs pass on push to `main`:
 | Domain | `vernier.news` |
 | Registrar | Cloudflare |
 | DNS | A record `@` → 95.217.177.243 (proxied), A record `www` → 95.217.177.243 (proxied) |
-| Status | Propagated and live |
+| Status | Propagated and live. `www` redirects to apex via Caddy. |
 
 ---
 
@@ -255,6 +281,24 @@ All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ 
 
 ---
 
+## Pre-Phase 2 hardening — complete (20 May 2026)
+
+All items below were resolved before Phase 2 work began.
+
+### Security fixes
+
+- **Redis/PostgreSQL internet-exposed** — Docker's iptables bypass was exposing both services publicly despite UFW rules. Fixed by removing `ports:` from both services in `docker-compose.yml`. Flagged by BSI/CERT-Bund via Hetzner abuse notification.
+- **API internet-exposed** — `ports: "8000:8000"` changed to `"127.0.0.1:8000:8000"`, binding only to loopback. Caddy accesses the API via the internal Docker network (`api:8000`).
+- **Admin key guard fails open** — `app/routers/admin.py` condition `if settings.admin_api_key and key != ...` replaced with `if not settings.admin_api_key or key != ...` so the guard fails closed when the key is absent.
+- **SQL NULL/boolean comparisons** — `Article.category_id == None` → `.is_(None)` and `Cluster.active == True` → `.is_(True)` in `app/routers/admin.py` and `app/routers/clusters.py`. Python equality against SQL NULL evaluates to UNKNOWN, silently returning wrong rows.
+
+### Infrastructure additions
+
+- **Caddy reverse proxy** — added as a Docker service. Handles TLS termination with auto-renewing Let's Encrypt certificate. `vernier.news` proxies to `api:8000` within the Docker network; `www.vernier.news` issues a permanent redirect to the apex.
+- **CORS tightened** — `allow_origins=["*"]` → `["https://vernier.news"]` in `app/main.py`.
+
+---
+
 ## Immediate next steps
 
 1. **Phase 2 — MVP Clients** — Flutter Web PWA + Python CLI (see `PROJECT.md` Phase 2)
@@ -264,32 +308,11 @@ All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ 
 
 ## Outstanding code issues
 
-### Fix now — active bugs regardless of phase
+### Address at Phase 2 start
 
-**NULL/boolean comparisons in admin router and clusters router**
+**Remove `--reload` and the dev volume mount from `docker-compose.yml`**
 
-Two queries use Python equality operators against SQL NULL and boolean values, which can silently produce wrong results:
-
-- `app/routers/admin.py:40` — `Article.category_id == None` should be `.is_(None)`
-- `app/routers/clusters.py:18` and `app/routers/admin.py:94` — `Cluster.active == True` should be `.is_(True)`
-
-In SQL, `== NULL` evaluates to UNKNOWN rather than TRUE or FALSE, meaning the filter can silently return incorrect rows. Fix before any other work.
-
-### Fix at Phase 2 start — before the PWA ships
-
-**CORS origins**
-
-`app/main.py` currently sets `allow_origins=["*"]`. This must be tightened to `["https://vernier.news"]` before the Flutter PWA is wired to the backend. Cannot be done earlier because there is no client yet, but must not slip past Phase 2.
-
-**Admin key bypass**
-
-`app/routers/admin.py` guards admin endpoints with:
-
-```python
-if settings.admin_api_key and key != settings.admin_api_key:
-```
-
-If `ADMIN_API_KEY` is unset, the condition short-circuits and any request passes. The key is confirmed set on the VPS so this is not exploitable right now, but the guard should always enforce — remove the short-circuit so the check fails closed when the key is absent. Fix at Phase 2 start alongside the CORS change.
+The `api` service currently runs with `--reload` (hot-reload on file changes) and mounts `./app:/app/app` from the host. Both are development conveniences that should not run in production. Move these into a `docker-compose.override.yml` for local development so the base compose file is clean for the VPS. Do this at Phase 2 start when the stack is being touched anyway.
 
 ### Defer to Phase 3 — already planned
 
@@ -302,6 +325,7 @@ Everything else flagged in a codebase audit (rate limiting, test coverage, DB in
 These are settled — not open questions:
 
 - **Auth:** JWT only (Argon2 + PyJWT). Google OAuth deferred to Phase 4.
+- **Reverse proxy:** Caddy. Auto-TLS, minimal config, single binary. Certificate stored in `caddy_data` Docker volume.
 - **Translation:** OPUS-MT (self-hosted, free) in Phase 4. DeepL upgrade in Phase 5.
 - **Entity resolution:** spaCy native EntityLinker + custom Wikidata KnowledgeBase. Not spacy-entity-linker (stale, experimental).
 - **Influence graph:** Cytoscape.js via Flutter HtmlElementView.
