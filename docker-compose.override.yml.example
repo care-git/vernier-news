@@ -1,0 +1,8 @@
+# Local development overrides.
+# Copy to docker-compose.override.yml — docker compose picks it up automatically.
+# docker-compose.override.yml is gitignored and must never be committed.
+services:
+  api:
+    volumes:
+      - ./app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
