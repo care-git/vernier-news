@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-05-20)
+
+### Features
+
+- **infra**: Add Caddy reverse proxy with auto-TLS and tighten CORS to vernier.news
+  ([`f14fd08`](https://github.com/care-git/vernier-news/commit/f14fd08d910fba552f2d11831ba30dfc0892051e))
+
+
 ## v0.1.2 (2026-05-20)
 
 ### Bug Fixes
