@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.4.0 (2026-05-20)
+
+### Bug Fixes
+
+- **api**: Format clusters router for Black
+  ([`3c86955`](https://github.com/care-git/vernier-news/commit/3c8695513fc148ce2bdabb79c210eb56e75a67fa))
+
+### Features
+
+- **api**: Add API client and data models
+  ([`2b2eb9d`](https://github.com/care-git/vernier-news/commit/2b2eb9dd8d65d94495316dc0527893080b788e06))
+
+- **api**: Add response schemas, implement digest endpoint, configurable CORS
+  ([`2a1e6bf`](https://github.com/care-git/vernier-news/commit/2a1e6bfd7f14ebb10375169a974aca1272707edc))
+
+
 ## v0.3.0 (2026-05-20)
 
 ### Chores
