@@ -19,7 +19,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tightened once domain is known
+    allow_origins=["https://vernier.news"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

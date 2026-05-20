@@ -1,0 +1,7 @@
+vernier.news {
+    reverse_proxy api:8000
+}
+
+www.vernier.news {
+    redir https://vernier.news{uri} permanent
+}
