@@ -17,9 +17,7 @@ async def list_clusters(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[dict]:
-    result = await db.execute(
-        select(Cluster.id).where(Cluster.active.is_(True)).limit(50)
-    )
+    result = await db.execute(select(Cluster.id).where(Cluster.active.is_(True)).limit(50))
     ids = result.scalars().all()
     summaries = []
     for cid in ids:
