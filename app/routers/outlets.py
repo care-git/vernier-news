@@ -1,16 +1,17 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.outlet import Outlet
+from app.schemas.outlet import OutletDetail, OutletSummary
 
 router = APIRouter(prefix="/outlets", tags=["outlets"])
 
 
-@router.get("/")
+@router.get("/", response_model=list[OutletSummary])
 async def list_outlets(db: AsyncSession = Depends(get_db)) -> list[dict]:
-    result = await db.execute(select(Outlet).where(Outlet.active == True).limit(200))  # noqa: E712
+    result = await db.execute(select(Outlet).where(Outlet.active.is_(True)).limit(200))
     return [
         {
             "id": o.id,
@@ -23,13 +24,11 @@ async def list_outlets(db: AsyncSession = Depends(get_db)) -> list[dict]:
     ]
 
 
-@router.get("/{outlet_id}")
+@router.get("/{outlet_id}", response_model=OutletDetail)
 async def get_outlet(outlet_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(select(Outlet).where(Outlet.id == outlet_id))
     outlet = result.scalar_one_or_none()
     if outlet is None:
-        from fastapi import HTTPException, status
-
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Outlet not found")
     return {
         "id": outlet.id,

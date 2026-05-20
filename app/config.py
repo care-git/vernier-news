@@ -27,5 +27,8 @@ class Settings(BaseSettings):
     # Admin API key — protects /api/v1/admin/* endpoints
     admin_api_key: str | None = None
 
+    # CORS — comma-separated origins; add http://localhost:PORT for local Flutter dev
+    cors_origins: str = "https://vernier.news"
+
 
 settings = Settings()
