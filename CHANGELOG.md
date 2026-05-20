@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-05-20)
+
+### Chores
+
+- **infra**: Move api hot-reload into docker-compose.override.yml
+  ([`6ef4e0c`](https://github.com/care-git/vernier-news/commit/6ef4e0c21b8ffbba58f978450e4a1fc8b9ec894b))
+
+### Documentation
+
+- Update to reflect pre-Phase 2 infrastructure hardening
+  ([`e6f138a`](https://github.com/care-git/vernier-news/commit/e6f138ad9e0b6a0b3e12201bb6ef6626a8a95a51))
+
+### Features
+
+- **client**: Scaffold Flutter web project with routing, theme, and DI
+  ([`5dcea33`](https://github.com/care-git/vernier-news/commit/5dcea33ebadc8ecedbfba42dd4628dabd4eb464f))
+
+
 ## v0.2.0 (2026-05-20)
 
 ### Features
