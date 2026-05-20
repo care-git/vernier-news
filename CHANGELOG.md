@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.1.2 (2026-05-20)
+
+### Bug Fixes
+
+- **infra**: Remove public port bindings for Redis and PostgreSQL, bind API to loopback
+  ([`e6c01d7`](https://github.com/care-git/vernier-news/commit/e6c01d78696da43e5f405abb4c63ed8f73aa4442))
+
+
 ## v0.1.1 (2026-05-19)
 
 ### Bug Fixes
