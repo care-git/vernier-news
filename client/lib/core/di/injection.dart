@@ -1,6 +1,9 @@
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../features/auth/bloc/auth_cubit.dart';
 import '../api/api_client.dart';
+import '../repositories/auth_repository.dart';
 
 final GetIt sl = GetIt.instance;
 
@@ -8,4 +11,13 @@ Future<void> configureDependencies() async {
   final prefs = await SharedPreferences.getInstance();
   sl.registerSingleton<SharedPreferences>(prefs);
   sl.registerLazySingleton<ApiClient>(ApiClient.new);
+  sl.registerLazySingleton<AuthRepository>(
+    () => AuthRepository(
+      apiClient: sl<ApiClient>(),
+      prefs: sl<SharedPreferences>(),
+    ),
+  );
+  sl.registerLazySingleton<AuthCubit>(
+    () => AuthCubit(repository: sl<AuthRepository>()),
+  );
 }
