@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.8.0 (2026-05-22)
+
+### Features
+
+- **api**: Add user preferences endpoint
+  ([`407272a`](https://github.com/care-git/vernier-news/commit/407272a3e7b97fd04a7c2b311095bb870af93f0a))
+
+PUT /users/preferences upserts a UserPreferences row for the authenticated user, storing purpose,
+  category interests and depth preference. Returns the saved values.
+
+
 ## v0.7.0 (2026-05-22)
 
 ### Features
