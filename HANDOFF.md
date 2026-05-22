@@ -1,6 +1,6 @@
 # Vernier News — Handoff Document
 
-*Last updated: 20 May 2026*
+*Last updated: 22 May 2026*
 
 ---
 
@@ -64,9 +64,10 @@ Phase 0 is fully running on the VPS. Health check passes, all migrations are app
 
 ```
 app/
-  main.py               — FastAPI app, all routers registered, CORS locked to vernier.news,
+  main.py               — FastAPI app, all routers registered, CORS via settings.cors_origins,
                           /health endpoint
-  config.py             — pydantic-settings, extra="ignore" for POSTGRES_* vars
+  config.py             — pydantic-settings, extra="ignore" for POSTGRES_* vars,
+                          cors_origins setting (comma-separated string)
   database.py           — async SQLAlchemy engine with NullPool, Base, get_db dependency
   worker.py             — Celery app (celery_app), Beat schedule, autodiscover pipeline tasks
   redis_client.py       — aioredis client singleton
@@ -74,7 +75,7 @@ app/
     router.py           — POST /api/v1/auth/register, /login, /refresh
     utils.py            — Argon2 password hashing, JWT create/decode
     dependencies.py     — get_current_user FastAPI dependency
-    schemas.py          — RegisterRequest, LoginRequest, TokenResponse
+    schemas.py          — RegisterRequest, LoginRequest, TokenResponse, RefreshRequest
   models/
     article.py          — Article (pgvector embedding, wire_tier, category_id, author,
                           collection_source as Text)
@@ -82,12 +83,17 @@ app/
     cluster.py          — Cluster (entity_cache JSONB) + ArticleCluster join table
     category.py         — Category (name, slug)
     user.py             — User (UserTier StrEnum) + UserPreferences (JSONB)
+  schemas/
+    cluster.py          — PoliticalSpread, ClusterSummary (Pydantic response models)
+    outlet.py           — OutletSummary, OutletDetail (Pydantic response models)
+    digest.py           — DigestResponse (Pydantic response model)
   routers/
     articles.py         — GET /articles/, GET /articles/{id} (auth required)
-    clusters.py         — GET /clusters/, GET /clusters/{id} (auth required)
+    clusters.py         — GET /clusters/, GET /clusters/{id} (auth required);
+                          cache-first, DB fallback for detail endpoint
     outlets.py          — GET /outlets/, GET /outlets/{id} (public)
     users.py            — GET /users/me (auth required)
-    digest.py           — GET /digest/ stub (Phase 2 deliverable)
+    digest.py           — GET /digest/ — serves cached DigestResponse or empty payload
     admin.py            — GET /admin/health, POST /admin/ingest, GET /admin/clusters/stats,
                           GET /admin/sources (X-Admin-Key header auth, fails closed if key unset)
   pipeline/
@@ -122,6 +128,32 @@ openclaw/
     vernier-ingest/     — AgentSkill: trigger immediate ingest
     vernier-clusters/   — AgentSkill: 24h cluster activity
     vernier-sources/    — AgentSkill: outlet health summary
+client/                 — Flutter Web PWA (Phase 2)
+  lib/
+    main.dart           — entry point; calls configureDependencies() then runApp
+    app.dart            — MaterialApp.router wired to AppRouter and AppTheme
+    core/
+      api/
+        api_client.dart       — Dio wrapper; get/getList/post methods; debug logging in dev
+        api_exception.dart    — typed ApiException (statusCode + message)
+        auth_interceptor.dart — injects JWT; handles 401 → refresh → retry cycle
+        endpoints.dart        — all endpoint paths as constants; baseUrl via --dart-define
+      di/
+        injection.dart        — get_it service locator; registers SharedPreferences + ApiClient
+      models/
+        cluster_summary.dart  — ClusterSummary + PoliticalSpread (mirrors backend schema)
+        digest_response.dart  — DigestResponse (mirrors backend schema)
+        outlet.dart           — OutletSummary + OutletDetail (mirrors backend schema)
+        token_response.dart   — TokenResponse
+        user.dart             — UserModel
+      router/
+        app_router.dart       — GoRouter config; all routes; AppRoute path constants + helpers
+      theme/
+        app_theme.dart        — Material 3 light + dark themes; seed Color(0xFF1A3050)
+  web/
+    index.html          — PWA entry point; updated title + description
+    manifest.json       — PWA manifest; name "Vernier News"; theme #1A3050
+  pubspec.yaml          — flutter_bloc, go_router, dio, shared_preferences, get_it, intl
 scripts/
   seed.py               — 10 categories + 31 outlets (incl. Hacker News), MBFC leaning data
 sources/
@@ -133,10 +165,14 @@ tests/
   test_auth.py          — register, duplicate email, login, wrong password, /me
 Caddyfile               — vernier.news → api:8000, www redirect, auto-TLS via Let's Encrypt
 docker-compose.yml      — Caddy, FastAPI, PostgreSQL (pgvector), Redis, Celery worker, Celery beat
+                          Production config only — no --reload, no volume mount
+docker-compose.override.yml.example
+                        — Dev overrides template: adds --reload + ./app volume mount to api.
+                          Copy to docker-compose.override.yml locally (gitignored).
 Dockerfile              — python:3.12-slim, pre-downloads all-MiniLM-L6-v2 + en_core_web_sm
 pyproject.toml          — all deps, ruff/black/pytest config, semantic-release config
 Makefile                — up, down, build, test, lint, format, migrate, migration, seed
-.env.example            — copy to .env, set credentials
+.env.example            — copy to .env, set credentials; includes CORS_ORIGINS
 .github/workflows/
   ci.yml                — lint → test → release (semantic-release on push to main)
 LICENSE                 — AGPL-3.0
@@ -152,7 +188,7 @@ All three CI jobs pass on push to `main`:
 |---|---|---|
 | Lint | ✅ Passing | ruff + black |
 | Test | ✅ Passing | 6 tests, pgvector/pgvector:pg16 service container |
-| Release | ✅ Passing | python-semantic-release v9, current version `0.1.0` |
+| Release | ✅ Passing | python-semantic-release v9, current version `0.4.0` |
 
 ---
 
@@ -174,8 +210,11 @@ All three CI jobs pass on push to `main`:
 | Seed data | Loaded (categories + outlets incl. Hacker News) |
 | Health check | `curl https://vernier.news/health` → `{"status":"ok","version":"0.1.0"}` |
 | HTTPS | Live via Caddy + Let's Encrypt. Cert auto-renews. |
+| Code | **Behind main** — Phase 2 backend changes (schemas, digest endpoint, CORS env var) not yet deployed. Deploy with `git pull && make build && make up`. |
 
 **Upgrade path:** CPX32 → CPX41 (16GB) before Phase 3 when Ollama moves to the VPS.
+
+After deploying Phase 2 backend changes, add `CORS_ORIGINS=https://vernier.news` to the VPS `.env` (the default is correct but should be explicit).
 
 #### Caddy — operational notes
 
@@ -283,8 +322,6 @@ All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ 
 
 ## Pre-Phase 2 hardening — complete (20 May 2026)
 
-All items below were resolved before Phase 2 work began.
-
 ### Security fixes
 
 - **Redis/PostgreSQL internet-exposed** — Docker's iptables bypass was exposing both services publicly despite UFW rules. Fixed by removing `ports:` from both services in `docker-compose.yml`. Flagged by BSI/CERT-Bund via Hetzner abuse notification.
@@ -295,28 +332,95 @@ All items below were resolved before Phase 2 work began.
 ### Infrastructure additions
 
 - **Caddy reverse proxy** — added as a Docker service. Handles TLS termination with auto-renewing Let's Encrypt certificate. `vernier.news` proxies to `api:8000` within the Docker network; `www.vernier.news` issues a permanent redirect to the apex.
-- **CORS tightened** — `allow_origins=["*"]` → `["https://vernier.news"]` in `app/main.py`.
+- **CORS** — `allow_origins=["*"]` tightened to a configurable list via `settings.cors_origins` (`CORS_ORIGINS` env var, comma-separated, defaults to `https://vernier.news`).
+
+---
+
+## Phase 2 — MVP Clients — in progress
+
+### Completed
+
+**Infrastructure cleanup (22 May 2026)**
+
+- `docker-compose.yml` stripped of dev-only config (`--reload`, `./app` volume mount). These now live in `docker-compose.override.yml` (gitignored). Copy `docker-compose.override.yml.example` to `docker-compose.override.yml` for local development — `docker compose up` picks it up automatically.
+
+**Backend — API contract (22 May 2026)**
+
+- `app/schemas/` package added: `ClusterSummary`, `PoliticalSpread`, `OutletSummary`, `OutletDetail`, `DigestResponse` Pydantic models define the API contract for all Phase 2 clients.
+- `GET /api/v1/digest/` now serves the cached `DigestResponse` from Redis (or an empty payload if the cache hasn't run yet).
+- `GET /api/v1/clusters/` and `GET /api/v1/clusters/{id}` return `ClusterSummary` shapes; detail endpoint falls back to minimal DB data on cache miss.
+- `GET /api/v1/outlets/` and `GET /api/v1/outlets/{id}` use `OutletSummary`/`OutletDetail` schemas.
+
+**Flutter client — scaffold and API layer (22 May 2026)**
+
+- Flutter SDK installed at `~/flutter/bin/flutter` (Channel stable, 3.44.0, darwin-arm64).
+- Chromium installed at `/Applications/Chromium.app`; `CHROME_EXECUTABLE` set in `~/.zshrc`.
+- `client/` Flutter project created (`news.vernier` org, `vernier_news` package, web platform).
+- Architecture: Bloc/Cubit state management, `go_router` navigation, `dio` HTTP client, `shared_preferences` token storage, `get_it` DI.
+- `lib/core/api/` — `ApiClient` (Dio wrapper), `AuthInterceptor` (JWT attach + 401 refresh/retry), `ApiException`, `Endpoints` (all paths; `baseUrl` via `--dart-define`).
+- `lib/core/models/` — `ClusterSummary`, `PoliticalSpread`, `DigestResponse`, `OutletSummary`, `OutletDetail`, `UserModel`, `TokenResponse` — all with `fromJson` constructors mirroring the backend schemas.
+- `lib/core/di/injection.dart` — registers `SharedPreferences` and `ApiClient` as singletons.
+- `lib/core/router/app_router.dart` — all routes defined with placeholder screens.
+- `lib/core/theme/app_theme.dart` — Material 3 light/dark, seed `Color(0xFF1A3050)`.
+
+### Remaining Phase 2 work
+
+In order:
+
+1. **Auth feature** — login screen, register screen, `AuthCubit` (login/register/logout/restore), token persistence via `SharedPreferences`, redirect guard in the router
+2. **Onboarding feature** — three-question flow (purpose, categories, depth preference), writes to `UserPreferences` via API, skippable with defaults
+3. **Digest view** — cluster cards (headline, source count, age, category, geographic spread, political spread bar), pull-to-refresh, free-tier RAS representative article indicator
+4. **Cluster detail view** — full source list with outlet names, country flags, timestamps, political leaning indicators, outlet inline card
+5. **User preferences screen** — category management, digest time, depth preference, account settings (email, password change)
+6. **Python CLI client** — `pip install vernier-news`, `digest` / `cluster` / `outlet` / `search` / `prefs` commands, full parity with PWA
+
+---
+
+## Local Flutter development
+
+**Prerequisites:** Flutter SDK at `~/flutter`, Chromium at `/Applications/Chromium.app`, `CHROME_EXECUTABLE` in `~/.zshrc`.
+
+**Run the backend locally** (required for dev; API binds on `localhost:8000`):
+```bash
+make up
+```
+
+**Add localhost to CORS** in your local `.env`:
+```
+CORS_ORIGINS=https://vernier.news,http://localhost:5173
+```
+Then `make up` again to pick up the change (or `docker compose restart api`).
+
+**Run the Flutter app:**
+```bash
+cd client
+flutter run -d chrome --web-port 5173 --dart-define=API_BASE_URL=http://localhost:8000
+```
+
+Hot reload is active when `docker-compose.override.yml` is present (adds `--reload` + volume mount to the API container). Flutter hot reload is always active in `flutter run`.
+
+**Build for production:**
+```bash
+cd client
+flutter build web --dart-define=API_BASE_URL=https://vernier.news
+```
+Output at `client/build/web/` — static files to be served by Caddy.
 
 ---
 
 ## Immediate next steps
 
-1. **Phase 2 — MVP Clients** — Flutter Web PWA + Python CLI (see `PROJECT.md` Phase 2)
-2. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Doesn't block Phase 2 or 3.
+1. **Deploy Phase 2 backend changes to VPS** — `git pull && make build && make up && make migrate` on the VPS. No new migrations, just a rebuild. Add `CORS_ORIGINS=https://vernier.news` to VPS `.env` (explicit, matches default).
+2. **Auth feature** — first real Flutter UI: login + register screens and the `AuthCubit`.
+3. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Does not block Phase 2 or 3.
 
 ---
 
-## Outstanding code issues
-
-### Address at Phase 2 start
-
-**Remove `--reload` and the dev volume mount from `docker-compose.yml`**
-
-The `api` service currently runs with `--reload` (hot-reload on file changes) and mounts `./app:/app/app` from the host. Both are development conveniences that should not run in production. Move these into a `docker-compose.override.yml` for local development so the base compose file is clean for the VPS. Do this at Phase 2 start when the stack is being touched anyway.
+## Outstanding issues
 
 ### Defer to Phase 3 — already planned
 
-Everything else flagged in a codebase audit (rate limiting, test coverage, DB indexes, monitoring, Swagger in production, Redis TTL tuning, password strength validation, API error handling consistency) is an explicit Phase 3 deliverable per `PROJECT.md`. Do not pull this work forward — Phase 3 is the right time to calibrate against real load data.
+Everything flagged in the codebase audit (rate limiting, test coverage, DB indexes, monitoring, Swagger in production, Redis TTL tuning, password strength validation, API error handling consistency) is an explicit Phase 3 deliverable per `PROJECT.md`. Do not pull this work forward — Phase 3 is the right time to calibrate against real load data.
 
 ---
 
@@ -334,9 +438,14 @@ These are settled — not open questions:
 - **Wire propagation:** Four-tier detection system. Phase 1 logs tiers only — collapsing activates in Phase 3 after empirical calibration.
 - **Embeddings:** `all-MiniLM-L6-v2` (384-dim, pre-downloaded in Dockerfile). Pre-downloaded into image at build time to avoid cold-start latency.
 - **Clustering score:** 0.6 × cosine + 0.4 × Jaccard, threshold 0.45. Entity cache stored as JSONB on `Cluster` to avoid a separate entity mentions table.
-- **Categorisation:** Ollama on VPS (Phase 3+). Phase 1 uses `http://localhost:11434` — will fail silently if unavailable. Articles remain uncategorised and are retried on next `categorise_pending` run.
+- **Categorisation:** Ollama on VPS (Phase 3+). Phase 1/2 uses `http://localhost:11434` — will fail silently if unavailable. Articles remain uncategorised and are retried on next `categorise_pending` run.
 - **Free tier article selection:** Representative Article Score (RAS) — 6 dimensions including political centroid proximity to prevent systematic bias.
 - **Social platforms:** Bluesky + Mastodon in Phase 4. LinkedIn + X/Twitter deferred to Phase 5/6.
 - **Payments:** Stripe. Requires UK Ltd to be in place first.
 - **Email:** Resend. Domain verified.
 - **Ollama on VPS:** Deferred to Phase 3. CPX32 (8GB RAM) cannot run Mistral 7B alongside existing services (~3.4GB used). Upgrade to CPX41 (16GB) at Phase 3 start.
+- **Flutter state management:** Bloc with Cubit for simpler screens. Strict separation of events, states, and business logic.
+- **Flutter navigation:** go_router. URL-based routing for web; all routes defined in `AppRoute` constants.
+- **Flutter HTTP:** dio. `AuthInterceptor` handles JWT attachment and 401 → refresh → retry transparently.
+- **Flutter environment config:** `--dart-define=API_BASE_URL=<url>` at build/run time. Default is `https://vernier.news`.
+- **Dev CORS:** `CORS_ORIGINS` env var (comma-separated). Add `http://localhost:5173` locally; VPS keeps `https://vernier.news` only.
