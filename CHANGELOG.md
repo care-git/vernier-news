@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.5.0 (2026-05-22)
+
+### Documentation
+
+- Update to current development stage
+  ([`fce669f`](https://github.com/care-git/vernier-news/commit/fce669f5709718004a9ff7569a3693b9b474b8cc))
+
+### Features
+
+- **client**: Add auth repository and cubit
+  ([`c3e6f56`](https://github.com/care-git/vernier-news/commit/c3e6f56b58c171976362af86c2eea14d58d18a85))
+
+AuthRepository handles login/register/getCurrentUser and token persistence. AuthCubit owns the
+  AuthState sealed class with checkAuth/login/register/logout/completeOnboarding methods.
+  GoRouterRefreshStream adapts the cubit stream for go_router.
+
+
 ## v0.4.0 (2026-05-20)
 
 ### Bug Fixes
