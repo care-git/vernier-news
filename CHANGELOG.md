@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.6.0 (2026-05-22)
+
+### Features
+
+- **client**: Add login and register screens
+  ([`d6abd2a`](https://github.com/care-git/vernier-news/commit/d6abd2ab99390658afa99a0d9911ae76f8fdbeaa))
+
+Email/password forms with validation, password visibility toggle, confirm-password field on
+  register, error banner from AuthCubit state, and loading state on the submit button.
+
+
 ## v0.5.0 (2026-05-22)
 
 ### Documentation
