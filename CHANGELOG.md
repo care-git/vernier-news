@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.7.0 (2026-05-22)
+
+### Features
+
+- **client**: Add auth redirect guard to router
+  ([`29e5a2b`](https://github.com/care-git/vernier-news/commit/29e5a2be307f322a2fa151c29e3ce3cd80430083))
+
+AppRouter uses GoRouterRefreshStream on the AuthCubit stream so redirects re-evaluate on every state
+  change. Unauthenticated users are sent to /login; new registrations to /onboarding; authenticated
+  users on auth routes to /digest. VernierApp is now a StatefulWidget that calls checkAuth() once in
+  initState via BlocProvider.value.
+
+
 ## v0.6.0 (2026-05-22)
 
 ### Features
