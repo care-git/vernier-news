@@ -51,6 +51,15 @@ class ApiClient {
     }
   }
 
+  Future<Map<String, dynamic>> put(String path, {Object? body}) async {
+    try {
+      final response = await _dio.put<Map<String, dynamic>>(path, data: body);
+      return response.data!;
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
   ApiException _mapError(DioException e) {
     final code = e.response?.statusCode ?? 0;
     final detail = e.response?.data;

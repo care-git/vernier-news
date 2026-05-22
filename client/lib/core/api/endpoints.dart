@@ -11,6 +11,7 @@ abstract final class Endpoints {
   static const login = '$_v1/auth/login';
   static const refresh = '$_v1/auth/refresh';
   static const me = '$_v1/users/me';
+  static const preferences = '$_v1/users/preferences';
   static const digest = '$_v1/digest/';
   static const clusters = '$_v1/clusters/';
   static const outlets = '$_v1/outlets/';
