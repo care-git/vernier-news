@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.11.0 (2026-05-22)
+
+### Features
+
+- **client**: Add three-step onboarding screen
+  ([`26ee5b8`](https://github.com/care-git/vernier-news/commit/26ee5b8cd77fbc78a4b2c7305f7c08c004ec55d1))
+
+PageView flow: purpose selection, category multi-select (pre-seeded from purpose choice), and depth
+  preference. Animated selection cards and FilterChips. Skip saves defaults. OnboardingCubit scoped
+  to the route via BlocProvider.value.
+
+
 ## v0.10.0 (2026-05-22)
 
 ### Features
