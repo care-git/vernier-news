@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.9.0 (2026-05-22)
+
+### Features
+
+- **client**: Add preferences repository and onboarding cubit
+  ([`637736f`](https://github.com/care-git/vernier-news/commit/637736f497184cf43545049ba69fd0180aeafb7e))
+
+ApiClient gains a put() method. PreferencesRepository wraps PUT /users/preferences. OnboardingCubit
+  manages submit/skip and calls AuthCubit.completeOnboarding() on success to trigger the router
+  redirect.
+
+
 ## v0.8.0 (2026-05-22)
 
 ### Features
