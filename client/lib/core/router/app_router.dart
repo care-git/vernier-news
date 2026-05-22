@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/bloc/auth_cubit.dart';
+import '../../features/auth/screens/login_screen.dart';
+import '../../features/auth/screens/register_screen.dart';
+import '../di/injection.dart';
+import 'go_router_refresh_stream.dart';
+
 abstract final class AppRoute {
   static const login = '/login';
   static const register = '/register';
@@ -22,18 +28,16 @@ abstract final class AppRouter {
 
   static final router = GoRouter(
     initialLocation: AppRoute.digest,
-    redirect: (context, state) {
-      if (state.uri.path == '/') return AppRoute.digest;
-      return null;
-    },
+    refreshListenable: GoRouterRefreshStream(sl<AuthCubit>().stream),
+    redirect: _redirect,
     routes: [
       GoRoute(
         path: AppRoute.login,
-        builder: (context, state) => const _Placeholder(label: 'Login'),
+        builder: (context, state) => const LoginScreen(),
       ),
       GoRoute(
         path: AppRoute.register,
-        builder: (context, state) => const _Placeholder(label: 'Register'),
+        builder: (context, state) => const RegisterScreen(),
       ),
       GoRoute(
         path: AppRoute.onboarding,
@@ -61,6 +65,33 @@ abstract final class AppRouter {
       ),
     ],
   );
+
+  static String? _redirect(BuildContext context, GoRouterState state) {
+    final authState = sl<AuthCubit>().state;
+    final path = state.uri.path;
+
+    // Let the loading / initial states settle without redirecting.
+    if (authState is AuthInitial || authState is AuthLoading) return null;
+
+    final isAuthRoute =
+        path == AppRoute.login || path == AppRoute.register;
+
+    if (authState is AuthUnauthenticated) {
+      // Send unauthenticated users to login, but leave them on auth routes.
+      return isAuthRoute ? null : AppRoute.login;
+    }
+
+    if (authState is AuthAuthenticated) {
+      // New users must complete onboarding before anything else.
+      if (authState.isNewUser && path != AppRoute.onboarding) {
+        return AppRoute.onboarding;
+      }
+      // Authenticated users on auth routes or bare '/' go to the digest.
+      if (isAuthRoute || path == '/') return AppRoute.digest;
+    }
+
+    return null;
+  }
 }
 
 class _Placeholder extends StatelessWidget {
