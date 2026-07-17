@@ -93,12 +93,15 @@ abstract final class AppRouter {
     }
 
     if (authState is AuthAuthenticated) {
-      // New users must complete onboarding before anything else.
-      if (authState.isNewUser && path != AppRoute.onboarding) {
-        return AppRoute.onboarding;
+      if (authState.isNewUser) {
+        // New users must complete onboarding — hold them there until done.
+        return path == AppRoute.onboarding ? null : AppRoute.onboarding;
       }
-      // Authenticated users on auth routes or bare '/' go to the digest.
-      if (isAuthRoute || path == '/') return AppRoute.digest;
+      // Established users: redirect away from auth routes, root, and the
+      // onboarding page (reached after completeOnboarding() fires).
+      if (isAuthRoute || path == '/' || path == AppRoute.onboarding) {
+        return AppRoute.digest;
+      }
     }
 
     return null;
