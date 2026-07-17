@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.12.0 (2026-07-17)
+
+### Features
+
+- **client**: Add digest repository and cubit
+  ([`df4bd81`](https://github.com/care-git/vernier-news/commit/df4bd81595cc37fdb268e44658fd07e1357aa279))
+
+DigestRepository fetches GET /digest/. DigestCubit has load() for initial fetch and refresh() for
+  pull-to-refresh, with DigestInitial, DigestLoading, DigestLoaded, DigestEmpty and DigestError
+  states.
+
+- **client**: Add digest screen and cluster card
+  ([`52b9137`](https://github.com/care-git/vernier-news/commit/52b9137965b09e97416bfa3a744ea60029affb8b))
+
+Category-grouped list with pull-to-refresh, empty and error states. ClusterCard shows headline,
+  source counts, relative age, political spread bar and countries. Also wires onboarding and digest
+  routes that were missing BlocProvider.value in the router.
+
+
 ## v0.11.0 (2026-05-22)
 
 ### Features
