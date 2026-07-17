@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/bloc/auth_cubit.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
+import '../../features/digest/bloc/digest_cubit.dart';
+import '../../features/digest/screens/digest_screen.dart';
+import '../../features/onboarding/bloc/onboarding_cubit.dart';
+import '../../features/onboarding/screens/onboarding_screen.dart';
 import '../di/injection.dart';
 import 'go_router_refresh_stream.dart';
 
@@ -41,11 +46,17 @@ abstract final class AppRouter {
       ),
       GoRoute(
         path: AppRoute.onboarding,
-        builder: (context, state) => const _Placeholder(label: 'Onboarding'),
+        builder: (context, state) => BlocProvider.value(
+          value: sl<OnboardingCubit>(),
+          child: const OnboardingScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoute.digest,
-        builder: (context, state) => const _Placeholder(label: 'Digest'),
+        builder: (context, state) => BlocProvider.value(
+          value: sl<DigestCubit>(),
+          child: const DigestScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoute.clusterPattern,
