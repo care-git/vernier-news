@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.12.3 (2026-07-20)
+
+### Bug Fixes
+
+- **client**: Redirect to digest after onboarding completes
+  ([`2ce3112`](https://github.com/care-git/vernier-news/commit/2ce3112338759bf25d5b582d0e61d8b5e048c09f))
+
+The redirect guard returned null when an established user (isNewUser: false) was still on
+  /onboarding, leaving them stuck. Now any authenticated non-new-user on the onboarding route is
+  sent to digest.
+
+
 ## v0.12.2 (2026-07-17)
 
 ### Bug Fixes
