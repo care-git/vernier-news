@@ -1,6 +1,6 @@
 # Vernier News — Handoff Document
 
-*Last updated: 22 May 2026*
+*Last updated: 22 July 2026*
 
 ---
 
@@ -87,12 +87,13 @@ app/
     cluster.py          — PoliticalSpread, ClusterSummary (Pydantic response models)
     outlet.py           — OutletSummary, OutletDetail (Pydantic response models)
     digest.py           — DigestResponse (Pydantic response model)
+    user.py             — UserPreferencesRequest, UserPreferencesResponse
   routers/
     articles.py         — GET /articles/, GET /articles/{id} (auth required)
     clusters.py         — GET /clusters/, GET /clusters/{id} (auth required);
                           cache-first, DB fallback for detail endpoint
     outlets.py          — GET /outlets/, GET /outlets/{id} (public)
-    users.py            — GET /users/me (auth required)
+    users.py            — GET /users/me; PUT /users/preferences (upsert, auth required)
     digest.py           — GET /digest/ — serves cached DigestResponse or empty payload
     admin.py            — GET /admin/health, POST /admin/ingest, GET /admin/clusters/stats,
                           GET /admin/sources (X-Admin-Key header auth, fails closed if key unset)
@@ -131,25 +132,57 @@ openclaw/
 client/                 — Flutter Web PWA (Phase 2)
   lib/
     main.dart           — entry point; calls configureDependencies() then runApp
-    app.dart            — MaterialApp.router wired to AppRouter and AppTheme
+    app.dart            — StatefulWidget; calls AuthCubit.checkAuth() in initState;
+                          BlocProvider.value(AuthCubit) wrapping MaterialApp.router
     core/
       api/
-        api_client.dart       — Dio wrapper; get/getList/post methods; debug logging in dev
+        api_client.dart       — Dio wrapper; get/getList/post/put methods; debug logging in dev
         api_exception.dart    — typed ApiException (statusCode + message)
         auth_interceptor.dart — injects JWT; handles 401 → refresh → retry cycle
         endpoints.dart        — all endpoint paths as constants; baseUrl via --dart-define
       di/
-        injection.dart        — get_it service locator; registers SharedPreferences + ApiClient
+        injection.dart        — get_it; registers SharedPreferences, ApiClient,
+                                AuthRepository, AuthCubit, PreferencesRepository,
+                                OnboardingCubit, DigestRepository, DigestCubit
       models/
         cluster_summary.dart  — ClusterSummary + PoliticalSpread (mirrors backend schema)
         digest_response.dart  — DigestResponse (mirrors backend schema)
         outlet.dart           — OutletSummary + OutletDetail (mirrors backend schema)
         token_response.dart   — TokenResponse
         user.dart             — UserModel
+        user_preferences.dart — UserPreferences (purpose, interests, depthPreference)
+      repositories/
+        auth_repository.dart       — login/register/getCurrentUser/saveTokens/clearTokens/hasToken
+        digest_repository.dart     — getDigest() → DigestResponse
+        preferences_repository.dart — updatePreferences() → PUT /users/preferences
       router/
-        app_router.dart       — GoRouter config; all routes; AppRoute path constants + helpers
+        app_router.dart            — GoRouter; all routes wired; auth + onboarding redirect guard
+        go_router_refresh_stream.dart — ChangeNotifier adapter for cubit streams
       theme/
         app_theme.dart        — Material 3 light + dark themes; seed Color(0xFF1A3050)
+    features/
+      auth/
+        bloc/
+          auth_cubit.dart     — checkAuth/login/register/logout/completeOnboarding
+          auth_state.dart     — sealed: AuthInitial, AuthLoading, AuthAuthenticated(isNewUser),
+                                AuthUnauthenticated(error?)
+        screens/
+          login_screen.dart   — email + password form; error banner; link to register
+          register_screen.dart — email + password + confirm form; link to login
+      onboarding/
+        bloc/
+          onboarding_cubit.dart  — submit(purpose, interests, depthPreference) / skip()
+          onboarding_state.dart  — sealed: OnboardingInitial, Loading, Complete, Error
+        screens/
+          onboarding_screen.dart — 3-step PageView: purpose → categories → depth;
+                                   animated SelectCards + FilterChips; skip saves defaults
+      digest/
+        bloc/
+          digest_cubit.dart   — load() / refresh(); DigestInitial/Loading/Loaded/Empty/Error
+          digest_state.dart   — sealed states
+        screens/
+          digest_screen.dart  — category-grouped ListView; pull-to-refresh; ClusterCard widget;
+                                 SpreadBar (political range + mean marker); empty + error states
   web/
     index.html          — PWA entry point; updated title + description
     manifest.json       — PWA manifest; name "Vernier News"; theme #1A3050
@@ -188,7 +221,7 @@ All three CI jobs pass on push to `main`:
 |---|---|---|
 | Lint | ✅ Passing | ruff + black |
 | Test | ✅ Passing | 6 tests, pgvector/pgvector:pg16 service container |
-| Release | ✅ Passing | python-semantic-release v9, current version `0.4.0` |
+| Release | ✅ Passing | python-semantic-release v9, current version `0.12.2` |
 
 ---
 
@@ -210,11 +243,11 @@ All three CI jobs pass on push to `main`:
 | Seed data | Loaded (categories + outlets incl. Hacker News) |
 | Health check | `curl https://vernier.news/health` → `{"status":"ok","version":"0.1.0"}` |
 | HTTPS | Live via Caddy + Let's Encrypt. Cert auto-renews. |
-| Code | **Behind main** — Phase 2 backend changes (schemas, digest endpoint, CORS env var) not yet deployed. Deploy with `git pull && make build && make up`. |
+| Code | **Behind main** — Phase 2 backend changes not yet deployed (includes user preferences endpoint, schemas, CORS env var). Deploy with `git pull && make build && make up`. |
 
 **Upgrade path:** CPX32 → CPX41 (16GB) before Phase 3 when Ollama moves to the VPS.
 
-After deploying Phase 2 backend changes, add `CORS_ORIGINS=https://vernier.news` to the VPS `.env` (the default is correct but should be explicit).
+After deploying, confirm `CORS_ORIGINS=https://vernier.news` is set in the VPS `.env` (the default is correct but should be explicit).
 
 #### Caddy — operational notes
 
@@ -351,53 +384,87 @@ All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ 
 - `GET /api/v1/clusters/` and `GET /api/v1/clusters/{id}` return `ClusterSummary` shapes; detail endpoint falls back to minimal DB data on cache miss.
 - `GET /api/v1/outlets/` and `GET /api/v1/outlets/{id}` use `OutletSummary`/`OutletDetail` schemas.
 
+**Backend — user preferences (22 July 2026)**
+
+- `app/schemas/user.py` added: `UserPreferencesRequest`, `UserPreferencesResponse`.
+- `PUT /api/v1/users/preferences` — upserts a `UserPreferences` row; stores `purpose` and `interests` list in the `categories` JSONB column, `depth_preference` as a string. Returns the saved values.
+
 **Flutter client — scaffold and API layer (22 May 2026)**
 
 - Flutter SDK installed at `~/flutter/bin/flutter` (Channel stable, 3.44.0, darwin-arm64).
-- Chromium installed at `/Applications/Chromium.app`; `CHROME_EXECUTABLE` set in `~/.zshrc`.
+- Chromium installed at `/Applications/Chromium.app`; `CHROME_EXECUTABLE` and Flutter PATH set in `~/.zshrc`.
 - `client/` Flutter project created (`news.vernier` org, `vernier_news` package, web platform).
 - Architecture: Bloc/Cubit state management, `go_router` navigation, `dio` HTTP client, `shared_preferences` token storage, `get_it` DI.
-- `lib/core/api/` — `ApiClient` (Dio wrapper), `AuthInterceptor` (JWT attach + 401 refresh/retry), `ApiException`, `Endpoints` (all paths; `baseUrl` via `--dart-define`).
-- `lib/core/models/` — `ClusterSummary`, `PoliticalSpread`, `DigestResponse`, `OutletSummary`, `OutletDetail`, `UserModel`, `TokenResponse` — all with `fromJson` constructors mirroring the backend schemas.
-- `lib/core/di/injection.dart` — registers `SharedPreferences` and `ApiClient` as singletons.
-- `lib/core/router/app_router.dart` — all routes defined with placeholder screens.
+- `lib/core/api/` — `ApiClient` (Dio wrapper: get/getList/post/put), `AuthInterceptor` (JWT attach + 401 refresh/retry), `ApiException`, `Endpoints`.
+- `lib/core/models/` — `ClusterSummary`, `PoliticalSpread`, `DigestResponse`, `OutletSummary`, `OutletDetail`, `UserModel`, `TokenResponse`, `UserPreferences`.
 - `lib/core/theme/app_theme.dart` — Material 3 light/dark, seed `Color(0xFF1A3050)`.
+
+**Flutter client — auth feature (22 July 2026)**
+
+- `AuthRepository` — login/register/getCurrentUser/token persistence (SharedPreferences keys `access_token`, `refresh_token`).
+- `AuthCubit` — `checkAuth` / `login` / `register` / `logout` / `completeOnboarding`. Sealed `AuthState` with `AuthAuthenticated(isNewUser)`.
+- `GoRouterRefreshStream` — adapts the cubit stream to `ChangeNotifier` for go_router's `refreshListenable`.
+- Router redirect guard — unauthenticated users → `/login`; new users → `/onboarding`; established users on auth/onboarding routes → `/digest`.
+- Login and register screens — Material 3 forms with validation, error banners, and password visibility toggle.
+- `app.dart` converted to `StatefulWidget`; `checkAuth()` called in `initState`; `BlocProvider.value` provides `AuthCubit` to the tree.
+- End-to-end tested: login → digest, register → onboarding flows verified live against VPS.
+
+**Flutter client — onboarding feature (22 July 2026)**
+
+- `PreferencesRepository` — wraps `PUT /users/preferences`.
+- `OnboardingCubit` — `submit(purpose, interests, depthPreference)` / `skip()`. Calls `authCubit.completeOnboarding()` on success, triggering the router redirect to `/digest`.
+- 3-step `PageView` screen: purpose selection (4 animated SelectCards), category multi-select (FilterChip grid, pre-seeded from purpose choice), depth preference (3 options). Skip saves defaults.
+- End-to-end tested: onboarding completion → digest redirect verified live.
+
+**Flutter client — digest view (22 July 2026)**
+
+- `DigestRepository` — wraps `GET /digest/`.
+- `DigestCubit` — `load()` (initial) / `refresh()` (pull-to-refresh). States: Initial, Loading, Loaded, Empty, Error.
+- `DigestScreen` — category-grouped `ListView.builder`; `RefreshIndicator`; empty state (digest not yet populated) and error state with retry button.
+- `ClusterCard` widget — headline (2 lines), source count + independent count, relative age, countries. Taps navigate to `/cluster/:id` (placeholder).
+- `_SpreadBar` widget — horizontal bar showing political coverage range (min→max shaded) and mean marker, normalised to [-1, 1] scale.
+- Logout button in app bar calls `AuthCubit.logout()`.
 
 ### Remaining Phase 2 work
 
 In order:
 
-1. **Auth feature** — login screen, register screen, `AuthCubit` (login/register/logout/restore), token persistence via `SharedPreferences`, redirect guard in the router
-2. **Onboarding feature** — three-question flow (purpose, categories, depth preference), writes to `UserPreferences` via API, skippable with defaults
-3. **Digest view** — cluster cards (headline, source count, age, category, geographic spread, political spread bar), pull-to-refresh, free-tier RAS representative article indicator
-4. **Cluster detail view** — full source list with outlet names, country flags, timestamps, political leaning indicators, outlet inline card
-5. **User preferences screen** — category management, digest time, depth preference, account settings (email, password change)
-6. **Python CLI client** — `pip install vernier-news`, `digest` / `cluster` / `outlet` / `search` / `prefs` commands, full parity with PWA
+1. **Cluster detail view** — full source list with outlet names, country flags, timestamps, political leaning indicators, outlet inline card
+2. **User preferences screen** — category management, depth preference, account settings (email, password change)
+3. **Python CLI client** — `pip install vernier-news`, `digest` / `cluster` / `outlet` / `search` / `prefs` commands, full parity with PWA
 
 ---
 
 ## Local Flutter development
 
-**Prerequisites:** Flutter SDK at `~/flutter`, Chromium at `/Applications/Chromium.app`, `CHROME_EXECUTABLE` in `~/.zshrc`.
+**Prerequisites:** Flutter SDK on `PATH` (set in `~/.zshrc`), Chromium at `/Applications/Chromium.app`, `CHROME_EXECUTABLE` pointing to Chromium binary in `~/.zshrc`.
 
-**Run the backend locally** (required for dev; API binds on `localhost:8000`):
-```bash
-make up
-```
+**Development setup — backend on VPS (current workflow):**
 
-**Add localhost to CORS** in your local `.env`:
-```
-CORS_ORIGINS=https://vernier.news,http://localhost:5173
-```
-Then `make up` again to pick up the change (or `docker compose restart api`).
+The backend runs permanently on the VPS at `https://vernier.news`. No local Docker needed for day-to-day Flutter development.
 
-**Run the Flutter app:**
+Add your Flutter dev server port to `CORS_ORIGINS` in the VPS `.env`:
+```
+CORS_ORIGINS=https://vernier.news,http://localhost:8080
+```
+Then restart the API: `docker compose restart api` (SSH into VPS).
+
+**Run the Flutter app against the VPS:**
 ```bash
 cd client
-flutter run -d chrome --web-port 5173 --dart-define=API_BASE_URL=http://localhost:8000
+CHROME_EXECUTABLE=/Applications/Chromium.app/Contents/MacOS/Chromium \
+flutter run -d chrome --web-port=8080 --dart-define=API_BASE_URL=https://vernier.news
 ```
 
-Hot reload is active when `docker-compose.override.yml` is present (adds `--reload` + volume mount to the API container). Flutter hot reload is always active in `flutter run`.
+**Alternative — run the backend locally** (useful when making backend changes):
+```bash
+# From repo root, requires docker-compose.override.yml to exist
+make up
+```
+Add `http://localhost:8080` to `CORS_ORIGINS` in your local `.env`, then:
+```bash
+flutter run -d chrome --web-port=8080 --dart-define=API_BASE_URL=http://localhost:8000
+```
 
 **Build for production:**
 ```bash
@@ -410,8 +477,8 @@ Output at `client/build/web/` — static files to be served by Caddy.
 
 ## Immediate next steps
 
-1. **Deploy Phase 2 backend changes to VPS** — `git pull && make build && make up && make migrate` on the VPS. No new migrations, just a rebuild. Add `CORS_ORIGINS=https://vernier.news` to VPS `.env` (explicit, matches default).
-2. **Auth feature** — first real Flutter UI: login + register screens and the `AuthCubit`.
+1. **Deploy Phase 2 backend changes to VPS** — `git pull && make build && make up` on the VPS. No new migrations needed. Adds the `PUT /users/preferences` endpoint and updated schemas.
+2. **Cluster detail view** — next Flutter feature; fetches `GET /clusters/{id}`, shows full article source list with outlet details.
 3. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Does not block Phase 2 or 3.
 
 ---
