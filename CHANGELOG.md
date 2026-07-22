@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.13.0 (2026-07-22)
+
+### Build System
+
+- **bot**: Add telegram bot image and dependency
+  ([`c60900a`](https://github.com/care-git/vernier-news/commit/c60900ae7b1bf448aa77720c002dc0cdb6fa3f35))
+
+### Documentation
+
+- Update HANDOFF.md to Phase 2 mid-point state
+  ([`e46947e`](https://github.com/care-git/vernier-news/commit/e46947e1af9b51dfe045eb284fe60e8b5e259fbb))
+
+Reflects completed auth, onboarding, and digest view features. Updates file tree, VPS status, CI
+  version, local dev instructions (VPS-first workflow, port 8080), and remaining work list.
+
+- **bot**: Document telegram bot config and spec
+  ([`e41c046`](https://github.com/care-git/vernier-news/commit/e41c046e88f1312b149398f0141a144568d5390c))
+
+### Features
+
+- **bot**: Add bot service behind compose profile
+  ([`4aedab7`](https://github.com/care-git/vernier-news/commit/4aedab7a639a758c465db534c7c908b27450f409))
+
+- **bot**: Add telegram control bot with commands and alerting
+  ([`dafb2e4`](https://github.com/care-git/vernier-news/commit/dafb2e4b4287faaf6d888eccc43f9e0aba558154))
+
+
 ## v0.12.3 (2026-07-20)
 
 ### Bug Fixes
