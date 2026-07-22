@@ -69,6 +69,19 @@ services:
         condition: service_healthy
     command: celery -A app.worker:celery_app beat --loglevel=info
 
+  # Telegram control bot (replaces OpenClaw). Gated behind the "bot" profile —
+  # only starts where COMPOSE_PROFILES=bot is set (the VPS). Long-polling only,
+  # so no ports are exposed; reaches the API over the internal network.
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    env_file: .env
+    depends_on:
+      - api
+    restart: unless-stopped
+    profiles: ["bot"]
+
 volumes:
   postgres_data:
   redis_data:
