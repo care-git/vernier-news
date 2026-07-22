@@ -42,6 +42,11 @@ dev = [
     "black>=24.4.0",
     "python-semantic-release>=9.0.0",
 ]
+# Telegram control bot (bot/). Installed in the bot's own minimal Docker image,
+# not the main app image. Listed here so the dependency is version-controlled.
+bot = [
+    "python-telegram-bot[job-queue]>=21",
+]
 
 
 
