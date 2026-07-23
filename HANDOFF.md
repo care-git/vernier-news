@@ -1,6 +1,6 @@
 # Vernier News — Handoff Document
 
-*Last updated: 22 July 2026*
+*Last updated: 23 July 2026*
 
 ---
 
@@ -123,12 +123,18 @@ migrations/
     20260519_0003_add_cluster_entity_cache.py
     20260519_0004_add_article_category_id.py
     20260519_0005_widen_collection_source.py               — VARCHAR(50) → Text
-openclaw/
+bot/                    — Telegram control bot (replaces OpenClaw); LLM-free, long-polling
+  config.py             — BotConfig (pydantic-settings); allowlist parsing
+  admin_client.py       — async httpx wrapper over /admin/* (typed AdminError)
+  formatting.py         — JSON → Telegram HTML
+  auth.py               — allowlist message filter (fail-closed)
+  handlers.py           — /health /ingest /clusters /sources /help /start + error handler
+  alerts.py             — daily digest + threshold alerts (queue depth, stall, API-down)
+  main.py               — wiring; refuses to start without token + allowlist
+  Dockerfile            — minimal py3.12-slim image (no ML deps)
+openclaw/               — DECOMMISSIONED (cost). Skill files kept as endpoint-contract record
   skills/
-    vernier-health/     — AgentSkill: pipeline health stats
-    vernier-ingest/     — AgentSkill: trigger immediate ingest
-    vernier-clusters/   — AgentSkill: 24h cluster activity
-    vernier-sources/    — AgentSkill: outlet health summary
+    vernier-{health,ingest,clusters,sources}/  — AgentSkill wrappers (legacy)
 client/                 — Flutter Web PWA (Phase 2)
   lib/
     main.dart           — entry point; calls configureDependencies() then runApp
@@ -197,7 +203,8 @@ tests/
   test_health.py        — GET /health smoke test
   test_auth.py          — register, duplicate email, login, wrong password, /me
 Caddyfile               — vernier.news → api:8000, www redirect, auto-TLS via Let's Encrypt
-docker-compose.yml      — Caddy, FastAPI, PostgreSQL (pgvector), Redis, Celery worker, Celery beat
+docker-compose.yml      — Caddy, FastAPI, PostgreSQL (pgvector), Redis, Celery worker, Celery beat,
+                          Telegram bot (behind the `bot` profile)
                           Production config only — no --reload, no volume mount
 docker-compose.override.yml.example
                         — Dev overrides template: adds --reload + ./app volume mount to api.
@@ -238,7 +245,7 @@ All three CI jobs pass on push to `main`:
 | Firewall | UFW active — ports 22, 80, 443 only |
 | User | `deploy` (sudo) |
 | Docker | 29.5.1 |
-| Services | All running: caddy, api, postgres, redis, worker, beat |
+| Services | All running: caddy, api, postgres, redis, worker, beat, bot |
 | Migrations | 0001–0005 applied |
 | Seed data | Loaded (categories + outlets incl. Hacker News) |
 | Health check | `curl https://vernier.news/health` → `{"status":"ok","version":"0.1.0"}` |
@@ -321,7 +328,7 @@ All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ 
 7. **Celery tasks + API connectors** — `app/pipeline/tasks.py`; 5 tasks, 6 API connectors. Beat schedule:
    - `ingest_feeds` + `categorise_pending` every 30 minutes
    - `precompute_cluster_summaries` + `precompute_digests` every hour
-8. **OpenClaw integration** — Telegram bot `@vernier_monitor_bot`, four AgentSkills (health, ingest, clusters, sources), OpenClaw running as user systemd service (`openclaw-gateway`)
+8. **Developer monitoring interface** — Telegram control bot `@vernier_monitor_bot` (`bot/`): four commands (health, ingest, clusters, sources) mapping to `/admin/*`, plus a daily digest and threshold alerts. Runs as a Docker Compose service behind the `bot` profile. Replaced the original LLM-driven OpenClaw gateway, decommissioned on cost — see operational notes below.
 
 ### API connector key status
 
@@ -334,14 +341,18 @@ All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ 
 | Currents | Yes — `CURRENTS_API_KEY` | VPS `.env` ✓ |
 | NYT | Yes — `NYT_API_KEY` | VPS `.env` ✓ |
 
-### OpenClaw — operational notes
+### Telegram control bot — operational notes
 
-- **Service:** `systemctl --user status openclaw-gateway`
-- **Logs:** `~/.openclaw/logs/` or `openclaw gateway status`
-- **Skills location:** `~/.openclaw/workspace/skills/vernier-{health,ingest,clusters,sources}/`
-- **Skills source:** `~/vernier-news/openclaw/skills/` (version controlled). If skills are updated in the repo, re-copy with `cp -r ~/vernier-news/openclaw/skills/vernier-* ~/.openclaw/workspace/skills/` — OpenClaw blocks symlinks that escape the workspace root.
-- **Admin key:** `VERNIER_ADMIN_KEY` set in the systemd service override at `~/.config/systemd/user/openclaw-gateway.service.d/override.conf` and in `~/vernier-news/.env` as `ADMIN_API_KEY`
-- **Model:** `anthropic/claude-haiku-4-5`. Switch to local Ollama in Phase 3 once Ollama is on the VPS.
+Replaced the OpenClaw gateway on 23 July 2026. OpenClaw's per-message LLM agent loop (`anthropic/claude-haiku-4-5`) burned credits far faster than its value justified for four fixed operations. The bot is deterministic — slash commands map straight to the existing `/admin/*` endpoints, no LLM — so ongoing cost is ~£0. Full spec: `docs/telegram-bot-spec.md`.
+
+- **Service:** Docker Compose service `bot`, gated behind the `bot` profile (`COMPOSE_PROFILES=bot` in the VPS `.env`). Long-polling only — no exposed ports; reaches the API over the internal Docker network at `http://api:8000`.
+- **Logs:** `docker compose logs bot`
+- **Commands:** `/health`, `/ingest`, `/clusters`, `/sources`, `/help`
+- **Alerting:** daily health digest at `BOT_DIGEST_UTC_HOUR` (UTC) + a threshold poll every `BOT_ALERT_POLL_MINUTES` covering queue depth, ingestion stall, and API-unreachable (each alert de-duplicated: one on entry, one on recovery). Sent to `TELEGRAM_ALERT_CHAT_ID`; alerting is disabled if that is unset.
+- **Access control:** allowlist via `TELEGRAM_ALLOWED_USER_IDS` — fail-closed; an empty allowlist means the bot refuses to start.
+- **Config (VPS `.env`):** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS`, `TELEGRAM_ALERT_CHAT_ID`, `BOT_API_BASE_URL` (default `http://api:8000`), `BOT_DIGEST_UTC_HOUR`, `BOT_ALERT_POLL_MINUTES`, `BOT_QUEUE_DEPTH_THRESHOLD`, `BOT_INGEST_STALL_HOURS`. Reuses the existing `ADMIN_API_KEY` for the `X-Admin-Key` header.
+- **BotFather:** command menu set via `/setcommands` (see the spec for the list).
+- **OpenClaw:** `openclaw-gateway` systemd `--user` service stopped and disabled. The `openclaw/skills/` files remain in the repo as a record of the endpoint contract; the install can be removed from the VPS whenever convenient.
 
 ### Known fixes applied during Phase 1
 
