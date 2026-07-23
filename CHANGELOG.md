@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.15.0 (2026-07-23)
+
+### Documentation
+
+- Add clustering-fix and categorisation design specs
+  ([`50033a8`](https://github.com/care-git/vernier-news/commit/50033a8c6eb94128373db091ef4b6687cb3e9ddf))
+
+- Add clustering-fix and categorisation design specs
+  ([`d145020`](https://github.com/care-git/vernier-news/commit/d14502002f66c080c8ab36ae5499ba50c4bc02ef))
+
+### Features
+
+- **pipeline**: Add settings table for tunable thresholds
+  ([`548fd4b`](https://github.com/care-git/vernier-news/commit/548fd4b4d74fccf4b77469a0598fc77064c7ac7d))
+
+### Refactoring
+
+- **pipeline**: Load clustering and dedup thresholds from settings
+  ([`f9cc527`](https://github.com/care-git/vernier-news/commit/f9cc5270e3ed2e7729d1c3a23d82fb73bded584f))
+
+
 ## v0.14.0 (2026-07-23)
 
 ### Build System
