@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vernier-news"
-version = "0.15.0"
+version = "0.15.1"
 description = "Global media intelligence platform"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }

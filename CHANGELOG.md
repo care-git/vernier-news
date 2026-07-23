@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.15.1 (2026-07-23)
+
+### Bug Fixes
+
+- **compose**: Add restart policy to api, postgres, redis, worker, beat
+  ([`77dc110`](https://github.com/care-git/vernier-news/commit/77dc1100390ce6367087faaa8b1f40c9cf42d493))
+
+
 ## v0.15.0 (2026-07-23)
 
 ### Documentation
