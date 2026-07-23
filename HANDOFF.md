@@ -83,26 +83,31 @@ app/
     cluster.py          — Cluster (entity_cache JSONB) + ArticleCluster join table
     category.py         — Category (name, slug)
     user.py             — User (UserTier StrEnum) + UserPreferences (JSONB)
+    settings.py         — Setting (typed key/value store for pipeline tuning thresholds)
   schemas/
-    cluster.py          — PoliticalSpread, ClusterSummary (Pydantic response models)
+    cluster.py          — PoliticalSpread, ClusterSummary, ClusterDetail (member sources +
+                          country counts) Pydantic response models
     outlet.py           — OutletSummary, OutletDetail (Pydantic response models)
     digest.py           — DigestResponse (Pydantic response model)
     user.py             — UserPreferencesRequest, UserPreferencesResponse
   routers/
     articles.py         — GET /articles/, GET /articles/{id} (auth required)
-    clusters.py         — GET /clusters/, GET /clusters/{id} (auth required);
-                          cache-first, DB fallback for detail endpoint
+    clusters.py         — GET /clusters/ (ClusterSummary list); GET /clusters/{id}
+                          (ClusterDetail: summary + full member source list + country counts)
     outlets.py          — GET /outlets/, GET /outlets/{id} (public)
     users.py            — GET /users/me; PUT /users/preferences (upsert, auth required)
     digest.py           — GET /digest/ — serves cached DigestResponse or empty payload
     admin.py            — GET /admin/health, POST /admin/ingest, GET /admin/clusters/stats,
                           GET /admin/sources (X-Admin-Key header auth, fails closed if key unset)
   pipeline/
-    tasks.py            — 5 Celery tasks: ingest_feeds, cluster_pass, categorise_pending,
-                          precompute_cluster_summaries_task, precompute_digests
+    tasks.py            — 5 Celery tasks; each pipeline run calls tuning.refresh() first
+    tuning.py           — PipelineTuning dataclass + loader; thresholds from the settings table
     dedup.py            — sentence-transformers embed, URL+cosine dedup, wire tier detection
+                          (thresholds via tuning)
     clustering.py       — spaCy NER, pgvector candidate search, Jaccard+cosine scoring
-    categorise.py       — Ollama (Mistral 7B) categorisation, graceful failure if unavailable
+                          (thresholds via tuning; being reworked — docs/clustering-fix-spec.md)
+    categorise.py       — Ollama (Mistral 7B) — being superseded by embedding-based
+                          categorisation (docs/categorisation-design.md)
     ingestion/
       normalise.py      — NormalisedArticle dataclass, HTML strip (bs4/lxml), langdetect
       rss.py            — parse_opml(), ingest_feed(), ingest_opml()
@@ -123,6 +128,7 @@ migrations/
     20260519_0003_add_cluster_entity_cache.py
     20260519_0004_add_article_category_id.py
     20260519_0005_widen_collection_source.py               — VARCHAR(50) → Text
+    20260723_0006_add_settings_table.py                    — pipeline tuning key/value + seed
 bot/                    — Telegram control bot (replaces OpenClaw); LLM-free, long-polling
   config.py             — BotConfig (pydantic-settings); allowlist parsing
   admin_client.py       — async httpx wrapper over /admin/* (typed AdminError)
@@ -149,9 +155,11 @@ client/                 — Flutter Web PWA (Phase 2)
       di/
         injection.dart        — get_it; registers SharedPreferences, ApiClient,
                                 AuthRepository, AuthCubit, PreferencesRepository,
-                                OnboardingCubit, DigestRepository, DigestCubit
+                                OnboardingCubit, DigestRepository, DigestCubit,
+                                ClusterRepository, ClusterCubit (factory)
       models/
         cluster_summary.dart  — ClusterSummary + PoliticalSpread (mirrors backend schema)
+        cluster_detail.dart   — ClusterDetail + ClusterSource + ClusterSourceOutlet + CountryCount
         digest_response.dart  — DigestResponse (mirrors backend schema)
         outlet.dart           — OutletSummary + OutletDetail (mirrors backend schema)
         token_response.dart   — TokenResponse
@@ -159,6 +167,7 @@ client/                 — Flutter Web PWA (Phase 2)
         user_preferences.dart — UserPreferences (purpose, interests, depthPreference)
       repositories/
         auth_repository.dart       — login/register/getCurrentUser/saveTokens/clearTokens/hasToken
+        cluster_repository.dart    — getCluster(id) → ClusterDetail
         digest_repository.dart     — getDigest() → DigestResponse
         preferences_repository.dart — updatePreferences() → PUT /users/preferences
       router/
@@ -166,6 +175,8 @@ client/                 — Flutter Web PWA (Phase 2)
         go_router_refresh_stream.dart — ChangeNotifier adapter for cubit streams
       theme/
         app_theme.dart        — Material 3 light + dark themes; seed Color(0xFF1A3050)
+      widgets/
+        spread_bar.dart       — shared political-spread bar (used by digest + cluster views)
     features/
       auth/
         bloc/
@@ -188,11 +199,19 @@ client/                 — Flutter Web PWA (Phase 2)
           digest_state.dart   — sealed states
         screens/
           digest_screen.dart  — category-grouped ListView; pull-to-refresh; ClusterCard widget;
-                                 SpreadBar (political range + mean marker); empty + error states
+                                 uses shared SpreadBar; empty + error states
+      clusters/
+        bloc/
+          cluster_cubit.dart  — load(id) → ClusterInitial/Loading/Loaded/Error
+          cluster_state.dart  — sealed states
+        screens/
+          cluster_screen.dart — headline, meta, SpreadBar, coverage chips, source list;
+                                 tap a source → outlet inline card (bottom sheet) + open article
   web/
     index.html          — PWA entry point; updated title + description
     manifest.json       — PWA manifest; name "Vernier News"; theme #1A3050
-  pubspec.yaml          — flutter_bloc, go_router, dio, shared_preferences, get_it, intl
+  pubspec.yaml          — flutter_bloc, go_router, dio, shared_preferences, get_it, intl,
+                          url_launcher
 scripts/
   seed.py               — 10 categories + 31 outlets (incl. Hacker News), MBFC leaning data
 sources/
@@ -202,6 +221,7 @@ tests/
   conftest.py           — NullPool engine, sync setup_db (asyncio.run), per-test async session
   test_health.py        — GET /health smoke test
   test_auth.py          — register, duplicate email, login, wrong password, /me
+  test_tuning.py        — PipelineTuning defaults + settings-table overlay
 Caddyfile               — vernier.news → api:8000, www redirect, auto-TLS via Let's Encrypt
 docker-compose.yml      — Caddy, FastAPI, PostgreSQL (pgvector), Redis, Celery worker, Celery beat,
                           Telegram bot (behind the `bot` profile)
@@ -213,6 +233,10 @@ Dockerfile              — python:3.12-slim, pre-downloads all-MiniLM-L6-v2 + e
 pyproject.toml          — all deps, ruff/black/pytest config, semantic-release config
 Makefile                — up, down, build, test, lint, format, migrate, migration, seed
 .env.example            — copy to .env, set credentials; includes CORS_ORIGINS
+docs/
+  telegram-bot-spec.md      — Telegram control bot spec
+  clustering-fix-spec.md    — clustering over-fragmentation diagnosis + fix plan
+  categorisation-design.md  — embedding-driven categorisation design
 .github/workflows/
   ci.yml                — lint → test → release (semantic-release on push to main)
 LICENSE                 — AGPL-3.0
@@ -227,8 +251,8 @@ All three CI jobs pass on push to `main`:
 | Job | Status | Notes |
 |---|---|---|
 | Lint | ✅ Passing | ruff + black |
-| Test | ✅ Passing | 6 tests, pgvector/pgvector:pg16 service container |
-| Release | ✅ Passing | python-semantic-release v9, current version `0.12.2` |
+| Test | ✅ Passing | 8 tests, pgvector/pgvector:pg16 service container |
+| Release | ✅ Passing | python-semantic-release v9, current version `0.15.1` |
 
 ---
 
@@ -246,13 +270,13 @@ All three CI jobs pass on push to `main`:
 | User | `deploy` (sudo) |
 | Docker | 29.5.1 |
 | Services | All running: caddy, api, postgres, redis, worker, beat, bot |
-| Migrations | 0001–0005 applied |
+| Migrations | 0001–0006 applied |
 | Seed data | Loaded (categories + outlets incl. Hacker News) |
 | Health check | `curl https://vernier.news/health` → `{"status":"ok","version":"0.1.0"}` |
 | HTTPS | Live via Caddy + Let's Encrypt. Cert auto-renews. |
-| Code | **Behind main** — Phase 2 backend changes not yet deployed (includes user preferences endpoint, schemas, CORS env var). Deploy with `git pull && make build && make up`. |
+| Code | **Up to date with `main`** (v0.15.1) — settings table (migration 0006), cluster detail endpoint, and per-service restart policies all deployed. |
 
-**Upgrade path:** CPX32 → CPX41 (16GB) before Phase 3 when Ollama moves to the VPS.
+**Upgrade path (revised):** A VPS upgrade is **no longer planned**. The categorisation redesign (embedding-driven; `docs/categorisation-design.md`) fits the current 8GB CPX32 — no on-box 7B Ollama. Larger Hetzner instances (CX4x/CAX) have been perpetually out of stock and steeply price-hiked, so the architecture is designed to stay on the CPX32.
 
 After deploying, confirm `CORS_ORIGINS=https://vernier.news` is set in the VPS `.env` (the default is correct but should be explicit).
 
@@ -278,6 +302,10 @@ Docker writes iptables rules directly, bypassing UFW entirely. A `ports:` entry 
 **Never add `ports:` to postgres or redis.** If a service needs to communicate with another service, use the Docker service name (e.g., `api:8000`, `redis:6379`) — all compose services share a network automatically.
 
 **Note on port scanners:** Hetzner operates a network-level SYN proxy for DDoS protection that completes TCP handshakes on behalf of the server for all ports. External port scanners (nmap, etc.) will report every port as "open" regardless of what is actually listening. Verify real port exposure via `ss -tlnp` and `sudo iptables -t nat -S` from within the VPS, not from external scans.
+
+#### Restart policy — all services
+
+Every service in `docker-compose.yml` sets `restart: unless-stopped`, so the full stack recovers automatically after a reboot or Docker daemon restart. (Historically only `caddy` had this, which left api/postgres/redis/worker/beat down after a reboot on 23 July 2026 — fixed by adding the policy to all services.)
 
 ---
 
@@ -315,15 +343,15 @@ Docker writes iptables rules directly, bypassing UFW entirely. A `ports:` entry 
 
 ## Phase 1 — data pipeline — complete
 
-All 8 steps complete and verified live on VPS. Pipeline confirmed running: 729+ articles ingested, 600+ clusters, all 31 outlets active.
+All 8 steps complete and verified live on VPS. Pipeline running: **35,931 articles, 21,329 clusters, 31 outlets active** (as of 23 July 2026). The cluster/article ratio (~1.7) reveals over-fragmentation — clustering is being reworked (see Outstanding issues and `docs/clustering-fix-spec.md`).
 
 ### Completed steps
 
 1. **NormalisedArticle + normalise()** — `app/pipeline/ingestion/normalise.py`
 2. **RSS/OPML ingestion** — `app/pipeline/ingestion/rss.py`; domain-based outlet lookup via OPML `domain` attribute
-3. **Deduplication + embeddings** — `app/pipeline/dedup.py`; sentence-transformers `all-MiniLM-L6-v2` (384-dim), URL dedup then cosine < 0.01 within 72h
-4. **Clustering** — `app/pipeline/clustering.py`; spaCy NER + pgvector cosine + Jaccard, combined score threshold 0.45
-5. **Categorisation** — `app/pipeline/categorise.py`; Ollama (Mistral 7B), graceful failure if Ollama is unavailable. Articles remain uncategorised on VPS until Phase 3 (Ollama on VPS).
+3. **Deduplication + embeddings** — `app/pipeline/dedup.py`; sentence-transformers `all-MiniLM-L6-v2` (384-dim), URL dedup then cosine < 0.01 within 72h. Embedding model being upgraded to **bge-m3** (multilingual, 1024-dim) — see `docs/clustering-fix-spec.md`.
+4. **Clustering** — `app/pipeline/clustering.py`; spaCy NER + pgvector cosine + Jaccard, combined score threshold 0.45. Thresholds now in the `settings` table (`app/pipeline/tuning.py`); scoring being reworked to semantic-primary — see `docs/clustering-fix-spec.md`.
+5. **Categorisation** — `app/pipeline/categorise.py`; Ollama (Mistral 7B). **Never ran on the VPS** (no Ollama), so all articles are uncategorised. Being **replaced** by embedding-driven categorisation — see `docs/categorisation-design.md`.
 6. **Redis caching** — `app/cache/clusters.py` + `app/cache/digest.py`; `cluster_summary:{id}` and `digest:{user_id}`, 1h TTL
 7. **Celery tasks + API connectors** — `app/pipeline/tasks.py`; 5 tasks, 6 API connectors. Beat schedule:
    - `ingest_feeds` + `categorise_pending` every 30 minutes
@@ -432,17 +460,38 @@ Replaced the OpenClaw gateway on 23 July 2026. OpenClaw's per-message LLM agent 
 - `DigestRepository` — wraps `GET /digest/`.
 - `DigestCubit` — `load()` (initial) / `refresh()` (pull-to-refresh). States: Initial, Loading, Loaded, Empty, Error.
 - `DigestScreen` — category-grouped `ListView.builder`; `RefreshIndicator`; empty state (digest not yet populated) and error state with retry button.
-- `ClusterCard` widget — headline (2 lines), source count + independent count, relative age, countries. Taps navigate to `/cluster/:id` (placeholder).
-- `_SpreadBar` widget — horizontal bar showing political coverage range (min→max shaded) and mean marker, normalised to [-1, 1] scale.
+- `ClusterCard` widget — headline (2 lines), source count + independent count, relative age, countries. Taps navigate to `/cluster/:id`.
 - Logout button in app bar calls `AuthCubit.logout()`.
+
+**Backend + Flutter — cluster detail view (23 July 2026)**
+
+- `GET /api/v1/clusters/{id}` upgraded to return `ClusterDetail` (summary fields + full member source list with outlet name/country/leaning/parent-org/wire-tier + `country_counts`). Summary fields from cache; member list on-demand from the DB.
+- Flutter cluster detail screen (`features/clusters/`): headline, meta, shared `SpreadBar`, coverage chips, source list; tapping a source opens an outlet inline card (bottom sheet) with a "Read original article" button (`url_launcher`). `SpreadBar` extracted to `core/widgets/` and shared with the digest.
+- **Not yet testable end-to-end** — blocked by the empty digest (see Outstanding issues); reachable only once clusters surface.
+
+**Pipeline — settings table (23 July 2026)**
+
+- `settings` table (migration 0006) + `app/pipeline/tuning.py`: all clustering/dedup/wire-tier thresholds are now live-editable rows, loaded at task start with code-default fallback. Behaviour-preserving (seeded values == old constants). Foundation for recalibration after the embedding upgrade.
+
+**Infrastructure — restart policies (23 July 2026)**
+
+- Added `restart: unless-stopped` to all `docker-compose.yml` services (previously only caddy + bot had it), so the stack survives reboots. Found when a VPS reboot left only caddy + bot running.
 
 ### Remaining Phase 2 work
 
-In order:
+**Active workstream — pipeline rework** (a prerequisite that emerged during Phase 2: the digest is empty and clusters are over-fragmented, so the pipeline is reworked before more client features):
 
-1. **Cluster detail view** — full source list with outlet names, country flags, timestamps, political leaning indicators, outlet inline card
-2. **User preferences screen** — category management, depth preference, account settings (email, password change)
-3. **Python CLI client** — `pip install vernier-news`, `digest` / `cluster` / `outlet` / `search` / `prefs` commands, full parity with PWA
+1. **bge-m3 embedding upgrade** — multilingual 1024-dim, int8 ONNX (`docs/clustering-fix-spec.md`)
+2. **Clustering fix** — semantic-primary scoring, entity de-brittling, threshold recalibration, consolidation pass
+3. **Categorisation** — embedding-driven broad categories (cluster-level) + emergent topic tree + small local LLM labelling (`docs/categorisation-design.md`)
+4. **Unfreeze the digest** — a category-independent "Top stories" group + real category groups once categorisation works
+
+**Then the remaining client features:**
+
+5. **User preferences screen** — category management, depth preference, account settings (email, password change)
+6. **Python CLI client** — `pip install vernier-news`, `digest` / `cluster` / `outlet` / `search` / `prefs`, full parity with PWA
+
+(Cluster detail view — **done** this session, backend + Flutter; see Completed above.)
 
 ---
 
@@ -488,13 +537,20 @@ Output at `client/build/web/` — static files to be served by Caddy.
 
 ## Immediate next steps
 
-1. **Deploy Phase 2 backend changes to VPS** — `git pull && make build && make up` on the VPS. No new migrations needed. Adds the `PUT /users/preferences` endpoint and updated schemas.
-2. **Cluster detail view** — next Flutter feature; fetches `GET /clusters/{id}`, shows full article source list with outlet details.
-3. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Does not block Phase 2 or 3.
+1. **bge-m3 embedding upgrade** (step 1 of `docs/clustering-fix-spec.md`) — swap the embedding model to bge-m3 (int8 ONNX), migrate `Article.embedding` to `Vector(1024)`, rebuild the HNSW index, and re-embed the corpus. Touches the live pipeline + Docker image; do on a branch and run the re-embed off-peak.
+2. **Clustering rework + recalibration** — rescore (semantic-primary), de-brittle entity overlap, recalibrate thresholds in the `settings` table, add the consolidation pass to collapse the 21k singletons.
+3. **Categorisation** then **unfreeze the digest** (per `docs/categorisation-design.md`).
+4. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Does not block the current work.
 
 ---
 
 ## Outstanding issues
+
+### Active — pipeline rework (blocking the digest)
+
+- **Digest is empty.** Three compounding causes: (a) the precompute cache is empty on the VPS — `/health` shows `cluster summaries cached: 0` and `digests cached: 0`, so the hourly `precompute_*` jobs aren't populating Redis (investigate worker/beat logs; the 21k-cluster summary job is likely too heavy / failing); (b) the digest groups by category via an inner join; and (c) all articles are uncategorised. The digest is deliberately left "frozen" until categorisation works — a "Top stories" fallback + real categories will unfreeze it.
+- **Clustering over-fragmentation.** 21,329 clusters from 35,931 articles (~1.7/cluster) — mostly singletons. Root cause: exact-string entity-Jaccard at 0.4 weight drags related articles below the 0.45 join threshold; MiniLM is English-centric. Fix plan: `docs/clustering-fix-spec.md`.
+- **Categorisation gap.** Ollama never ran on the VPS. Being **replaced** (not deferred) by embedding-driven categorisation: `docs/categorisation-design.md`.
 
 ### Defer to Phase 3 — already planned
 
@@ -513,15 +569,16 @@ These are settled — not open questions:
 - **Influence graph:** Cytoscape.js via Flutter HtmlElementView.
 - **Podcast transcripts:** Podcasting 2.0 namespace (primary source) + local Whisper (cited as generated). No third-party transcript services.
 - **Political leaning seed data:** MBFC public dataset. Acknowledged explicitly in soft launch materials.
-- **Wire propagation:** Four-tier detection system. Phase 1 logs tiers only — collapsing activates in Phase 3 after empirical calibration.
-- **Embeddings:** `all-MiniLM-L6-v2` (384-dim, pre-downloaded in Dockerfile). Pre-downloaded into image at build time to avoid cold-start latency.
-- **Clustering score:** 0.6 × cosine + 0.4 × Jaccard, threshold 0.45. Entity cache stored as JSONB on `Cluster` to avoid a separate entity mentions table.
-- **Categorisation:** Ollama on VPS (Phase 3+). Phase 1/2 uses `http://localhost:11434` — will fail silently if unavailable. Articles remain uncategorised and are retried on next `categorise_pending` run.
+- **Wire propagation:** Four-tier detection system. Phase 1 logs tiers only — collapsing activates in Phase 3 after empirical calibration. Thresholds live in the `settings` table (`app/pipeline/tuning.py`).
+- **Pipeline tuning:** clustering, dedup, and wire-tier thresholds live in the `settings` table, loaded via `app/pipeline/tuning.py` with code defaults as fallback. Enables calibration without redeploys.
+- **Embeddings:** **being upgraded** from `all-MiniLM-L6-v2` (384-dim) to **bge-m3** (multilingual, 1024-dim, int8 ONNX; ~1.5–2GB RAM). Multilingual is the key gain (clustering/categorisation across languages). Shared substrate for dedup, clustering, and categorisation. See `docs/clustering-fix-spec.md`.
+- **Clustering score:** originally 0.6 × cosine + 0.4 × Jaccard, threshold 0.45 — **being reworked** to semantic-primary with entity overlap as a booster (the exact-Jaccard term caused over-fragmentation). Entity cache stored as JSONB on `Cluster`. See `docs/clustering-fix-spec.md`.
+- **Categorisation:** **superseded.** No on-box 7B Ollama. Two-layer, embedding-driven, low-bias: a small curated set of broad categories (assigned to clusters by centroid similarity) + a fully-emergent topic hierarchy (BERTopic-style over cluster centroids), with a **small local LLM (Qwen2.5-1.5B, Apache-2.0) for topic labelling only** — free to run, no per-call cost. Categorise at the **cluster** level. Broad-category list finalised after the topic tree is built. See `docs/categorisation-design.md`.
 - **Free tier article selection:** Representative Article Score (RAS) — 6 dimensions including political centroid proximity to prevent systematic bias.
 - **Social platforms:** Bluesky + Mastodon in Phase 4. LinkedIn + X/Twitter deferred to Phase 5/6.
 - **Payments:** Stripe. Requires UK Ltd to be in place first.
 - **Email:** Resend. Domain verified.
-- **Ollama on VPS:** Deferred to Phase 3. CPX32 (8GB RAM) cannot run Mistral 7B alongside existing services (~3.4GB used). Upgrade to CPX41 (16GB) at Phase 3 start.
+- **Ollama on VPS:** **abandoned for categorisation.** A 7B model doesn't fit the 8GB CPX32, and larger Hetzner instances are perpetually out of stock + steeply price-hiked. The embedding-driven design fits the current box; only a small (1.5B) local model is used, for labelling. True model "learning" would be later embedding fine-tuning on a rented GPU, not an on-box LLM.
 - **Flutter state management:** Bloc with Cubit for simpler screens. Strict separation of events, states, and business logic.
 - **Flutter navigation:** go_router. URL-based routing for web; all routes defined in `AppRoute` constants.
 - **Flutter HTTP:** dio. `AuthInterceptor` handles JWT attachment and 401 → refresh → retry transparently.
