@@ -1,6 +1,32 @@
 # CHANGELOG
 
 
+## v0.14.0 (2026-07-23)
+
+### Build System
+
+- **client**: Add url_launcher dependency
+  ([`b332b86`](https://github.com/care-git/vernier-news/commit/b332b8605d2157b10a768890765260972bff7341))
+
+### Documentation
+
+- Record OpenClaw to Telegram bot swap in HANDOFF
+  ([`39b91d5`](https://github.com/care-git/vernier-news/commit/39b91d59450e0216ee8f816f0d7c37cd62a02c44))
+
+### Features
+
+- **api**: Add cluster detail endpoint with member sources
+  ([`03e9aa2`](https://github.com/care-git/vernier-news/commit/03e9aa238882fe68e7cbfd30d565aa51da28e2e5))
+
+- **client**: Add cluster detail screen
+  ([`f1d28d1`](https://github.com/care-git/vernier-news/commit/f1d28d16f79faed06d4cacb90c41acebdcf29b99))
+
+### Refactoring
+
+- **client**: Extract shared SpreadBar widget
+  ([`15ccce6`](https://github.com/care-git/vernier-news/commit/15ccce662fe31cd32df3384f9db68ded2e41e34f))
+
+
 ## v0.13.0 (2026-07-22)
 
 ### Build System
