@@ -12,6 +12,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.article import Article
 from app.models.outlet import Outlet
+from app.pipeline import tuning
 from app.pipeline.categorise import categorise_article
 from app.pipeline.clustering import assign_cluster, extract_entities, update_cluster_metadata
 from app.pipeline.dedup import persist_article
@@ -31,6 +32,8 @@ def ingest_feeds() -> dict:
 
     async def _run() -> dict:
         async with SessionLocal() as db:
+            await tuning.refresh(db)
+
             # Build outlet_map {domain: id} for OPML domain resolution.
             outlet_rows = await db.execute(
                 select(Outlet.domain, Outlet.id, Outlet.rss_feed_url).where(Outlet.active.is_(True))
@@ -102,6 +105,8 @@ def cluster_pass() -> dict:
 
     async def _run() -> dict:
         async with SessionLocal() as db:
+            await tuning.refresh(db)
+
             from sqlalchemy import exists, not_
 
             from app.models.cluster import ArticleCluster

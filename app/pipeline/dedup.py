@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.article import Article
 from app.models.outlet import Outlet
+from app.pipeline import tuning
 from app.pipeline.ingestion.normalise import NormalisedArticle
 
 logger = logging.getLogger(__name__)
@@ -16,16 +17,8 @@ logger = logging.getLogger(__name__)
 # Loaded once per worker process on first call.
 _model: SentenceTransformer | None = None
 
-# Wire tier similarity thresholds — moved to DB settings table in Phase 3.
-_TIER1_SIMILARITY = 0.88
-_TIER1_WINDOW_HOURS = 6
-_TIER2_SIMILARITY_HIGH = 0.88
-_TIER2_SIMILARITY_LOW = 0.70
-_TIER2_WINDOW_HOURS = 3
-_TIER3_SIMILARITY_HIGH = 0.70
-_TIER3_SIMILARITY_LOW = 0.62
-_TIER3_WINDOW_HOURS = 4
-_DEDUP_WINDOW_HOURS = 72
+# Wire tier + dedup thresholds now live in the `settings` table — see
+# app/pipeline/tuning.py.
 
 
 def _get_model() -> SentenceTransformer:
@@ -49,11 +42,12 @@ async def is_duplicate(url: str, embedding: list[float], db: AsyncSession) -> bo
     if url_check.scalar_one_or_none() is not None:
         return True
 
-    cutoff = datetime.now(UTC) - timedelta(hours=_DEDUP_WINDOW_HOURS)
+    t = tuning.current()
+    cutoff = datetime.now(UTC) - timedelta(hours=t.dedup_window_hours)
     sim_check = await db.execute(
         select(Article.id)
         .where(Article.published_at >= cutoff)
-        .where(Article.embedding.cosine_distance(embedding) < 0.01)
+        .where(Article.embedding.cosine_distance(embedding) < t.dedup_max_distance)
         .limit(1)
     )
     return sim_check.scalar_one_or_none() is not None
@@ -83,8 +77,9 @@ async def get_wire_tier(
         return 0, 1.0
 
     now = article.published_at or datetime.now(UTC)
+    t = tuning.current()
 
-    async def _best_match(window_hours: int) -> tuple[int | None, float]:
+    async def _best_match(window_hours: float) -> tuple[int | None, float]:
         cutoff = now - timedelta(hours=window_hours)
         result = await db.execute(
             select(
@@ -102,20 +97,20 @@ async def get_wire_tier(
             return None, 0.0
         return row.id, 1.0 - row.dist
 
-    _, sim_6h = await _best_match(_TIER1_WINDOW_HOURS)
-    if sim_6h >= _TIER1_SIMILARITY:
+    _, sim_6h = await _best_match(t.tier1_window_hours)
+    if sim_6h >= t.tier1_similarity:
         logger.info("wire tier 1 (sim=%.3f): %s", sim_6h, article.url)
         return 1, sim_6h
 
-    match_id_3h, sim_3h = await _best_match(_TIER2_WINDOW_HOURS)
-    if match_id_3h is not None and sim_3h >= _TIER2_SIMILARITY_LOW:
+    match_id_3h, sim_3h = await _best_match(t.tier2_window_hours)
+    if match_id_3h is not None and sim_3h >= t.tier2_similarity_low:
         # Author byline match is an additional Tier 2 signal; check below threshold too
         match_row = await db.execute(select(Article.author).where(Article.id == match_id_3h))
         match_author = match_row.scalar_one_or_none()
         author_match = (
             article.author and match_author and article.author.lower() == match_author.lower()
         )
-        if sim_3h < _TIER2_SIMILARITY_HIGH or author_match:
+        if sim_3h < t.tier2_similarity_high or author_match:
             logger.info(
                 "wire tier 2 (sim=%.3f, author_match=%s): %s",
                 sim_3h,
@@ -124,8 +119,8 @@ async def get_wire_tier(
             )
             return 2, sim_3h
 
-    _, sim_4h = await _best_match(_TIER3_WINDOW_HOURS)
-    if _TIER3_SIMILARITY_LOW <= sim_4h < _TIER3_SIMILARITY_HIGH:
+    _, sim_4h = await _best_match(t.tier3_window_hours)
+    if t.tier3_similarity_low <= sim_4h < t.tier3_similarity_high:
         logger.info("wire tier 3 (sim=%.3f): %s", sim_4h, article.url)
         return 3, sim_4h
 

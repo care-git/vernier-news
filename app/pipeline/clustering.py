@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.article import Article
 from app.models.cluster import ArticleCluster, Cluster
+from app.pipeline import tuning
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +19,7 @@ _nlp: spacy.language.Language | None = None
 # Entity types worth tracking for clustering purposes.
 _ENTITY_LABELS = {"PERSON", "ORG", "GPE", "LOC", "EVENT", "NORP"}
 
-# Clustering thresholds — moved to DB settings table in Phase 3.
-_CANDIDATE_MAX_DISTANCE = 0.6  # similarity > 0.4 to be a candidate cluster
-_COMBINED_SCORE_THRESHOLD = 0.45
-_SEMANTIC_WEIGHT = 0.6
-_ENTITY_WEIGHT = 0.4
-_TEMPORAL_WINDOW_HOURS = 72
-_DORMANCY_HOURS = 48
+# Clustering thresholds now live in the `settings` table — see app/pipeline/tuning.py.
 
 # Wire tier → independence score mapping.
 _TIER_INDEPENDENCE: dict[int | None, float] = {
@@ -83,7 +78,8 @@ async def assign_cluster(
 
     Returns the cluster_id.
     """
-    cutoff = (published_at or datetime.now(UTC)) - timedelta(hours=_TEMPORAL_WINDOW_HOURS)
+    t = tuning.current()
+    cutoff = (published_at or datetime.now(UTC)) - timedelta(hours=t.temporal_window_hours)
 
     # Find active clusters with at least one semantically close article in the window.
     candidates = await db.execute(
@@ -97,7 +93,7 @@ async def assign_cluster(
         .where(Cluster.active == True)  # noqa: E712
         .where(Article.published_at >= cutoff)
         .where(Article.embedding.isnot(None))
-        .where(Article.embedding.cosine_distance(embedding) < _CANDIDATE_MAX_DISTANCE)
+        .where(Article.embedding.cosine_distance(embedding) < t.candidate_max_distance)
         .group_by(ArticleCluster.cluster_id, Cluster.entity_cache)
         .order_by("min_dist")
         .limit(10)
@@ -110,13 +106,13 @@ async def assign_cluster(
     for row in rows:
         semantic_score = 1.0 - row.min_dist
         entity_score = _jaccard(entities, row.entity_cache or [])
-        combined = _SEMANTIC_WEIGHT * semantic_score + _ENTITY_WEIGHT * entity_score
+        combined = t.semantic_weight * semantic_score + t.entity_weight * entity_score
 
         if combined > best_score:
             best_score = combined
             best_cluster_id = row.cluster_id
 
-    if best_cluster_id is None or best_score < _COMBINED_SCORE_THRESHOLD:
+    if best_cluster_id is None or best_score < t.combined_score_threshold:
         # No suitable cluster — seed a new one.
         cluster = Cluster(
             first_published_at=published_at,
@@ -176,7 +172,7 @@ async def update_cluster_metadata(cluster_id: int, db: AsyncSession) -> None:
 
     if row.last_joined:
         age = datetime.now(UTC) - row.last_joined.replace(tzinfo=UTC)
-        if age > timedelta(hours=_DORMANCY_HOURS):
+        if age > timedelta(hours=tuning.current().dormancy_hours):
             cluster.active = False
 
     await db.flush()
