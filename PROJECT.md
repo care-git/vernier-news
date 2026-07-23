@@ -6,6 +6,19 @@
 
 ---
 
+> **Amendments since v0.4** (23 July 2026)
+>
+> Several technical decisions in this plan have been superseded during the Phase 2 build. The phase structure and product goals stand; the specifics below are updated. Current truth: `HANDOFF.md` + the design docs under `docs/`.
+>
+> - **Categorisation:** not Ollama/Mistral 7B. Embedding-driven — curated broad categories + an emergent topic hierarchy over cluster embeddings, with a small local LLM (Qwen2.5-1.5B, Apache-2.0) for *labelling* only, assigned at the **cluster** level. See `docs/categorisation-design.md`.
+> - **Embedding model:** `all-MiniLM-L6-v2` → **bge-m3** (multilingual, 1024-dim, int8 ONNX). Shared substrate for dedup, clustering, and categorisation. See `docs/clustering-fix-spec.md`.
+> - **Clustering:** the `0.6·cosine + 0.4·Jaccard` / 0.45 rule over-fragments (mostly singletons); being reworked to semantic-primary scoring with entity overlap as a booster. See `docs/clustering-fix-spec.md`.
+> - **VPS / hardware (§2, §5):** **no upgrade.** No on-box 7B Ollama and no move to CX41/CX51 — larger Hetzner instances are perpetually out of stock and steeply price-hiked, and the embedding-driven design fits the current 8GB CPX32. Any future model "learning" would be embedding fine-tuning on a rented GPU, not an on-box LLM.
+> - **Pipeline thresholds:** wire-tier, dedup, and clustering thresholds now live in a DB `settings` table (as anticipated in CONCEPT §5), tunable without redeploys.
+> - **Developer monitoring (§2, Phase 1):** OpenClaw replaced by a deterministic, LLM-free Telegram bot, on cost. See `docs/telegram-bot-spec.md`.
+
+---
+
 ## How to Read This Document
 
 CONCEPT.md defines what this platform is, why it exists, and what it must do. This document defines how it gets built — the technical decisions, the sequenced phases, and the risks that need managing. All technical decisions are confirmed and documented within their relevant phase sections. The risk register and remaining action items (Section 8\) cover what still needs attention before and during the build.

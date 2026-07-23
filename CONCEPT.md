@@ -6,6 +6,15 @@
 
 ---
 
+> **Amendments since v0.4** (23 July 2026)
+>
+> The vision below stands unchanged, but two *implementation* choices have been superseded during the Phase 2 build. Current truth lives in `HANDOFF.md` and the design docs under `docs/`.
+>
+> - **Categorisation (Stage 4, §12):** no longer a locally-run Ollama LLM. It is now embedding-driven — a small curated set of broad categories plus a fully-emergent topic hierarchy discovered over article/cluster embeddings, with a small local LLM used only to *label* topics. This fits the platform's agnosticism better (the taxonomy self-organises from data, not editorial choice) and fits the hardware. See `docs/categorisation-design.md`.
+> - **Embeddings (§12):** upgrading from `all-MiniLM-L6-v2` to **bge-m3** (multilingual, 1024-dim), which makes clustering and categorisation work *across languages* — central to the global mission. See `docs/clustering-fix-spec.md`.
+
+---
+
 ## 1\. Vision & Mission
 
 ### What this is
