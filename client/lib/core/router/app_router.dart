@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/bloc/auth_cubit.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
+import '../../features/clusters/bloc/cluster_cubit.dart';
+import '../../features/clusters/screens/cluster_screen.dart';
 import '../../features/digest/bloc/digest_cubit.dart';
 import '../../features/digest/screens/digest_screen.dart';
 import '../../features/onboarding/bloc/onboarding_cubit.dart';
@@ -60,9 +62,13 @@ abstract final class AppRouter {
       ),
       GoRoute(
         path: AppRoute.clusterPattern,
-        builder: (context, state) => _Placeholder(
-          label: 'Cluster ${state.pathParameters['id']}',
-        ),
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+          return BlocProvider(
+            create: (_) => sl<ClusterCubit>()..load(id),
+            child: ClusterScreen(clusterId: id),
+          );
+        },
       ),
       GoRoute(
         path: AppRoute.outletPattern,

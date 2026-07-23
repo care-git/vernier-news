@@ -2,10 +2,12 @@ import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/auth/bloc/auth_cubit.dart';
+import '../../features/clusters/bloc/cluster_cubit.dart';
 import '../../features/digest/bloc/digest_cubit.dart';
 import '../../features/onboarding/bloc/onboarding_cubit.dart';
 import '../api/api_client.dart';
 import '../repositories/auth_repository.dart';
+import '../repositories/cluster_repository.dart';
 import '../repositories/digest_repository.dart';
 import '../repositories/preferences_repository.dart';
 
@@ -38,5 +40,13 @@ Future<void> configureDependencies() async {
   );
   sl.registerLazySingleton<DigestCubit>(
     () => DigestCubit(repository: sl<DigestRepository>()),
+  );
+  sl.registerLazySingleton<ClusterRepository>(
+    () => ClusterRepository(apiClient: sl<ApiClient>()),
+  );
+  // Factory: a fresh cubit per cluster screen so navigating between stories
+  // doesn't reuse another cluster's state.
+  sl.registerFactory<ClusterCubit>(
+    () => ClusterCubit(repository: sl<ClusterRepository>()),
   );
 }
