@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/models/cluster_summary.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/widgets/spread_bar.dart';
 import '../../auth/bloc/auth_cubit.dart';
 import '../bloc/digest_cubit.dart';
 
@@ -250,7 +251,7 @@ class ClusterCard extends StatelessWidget {
               // Political spread bar
               if (cluster.politicalSpread != null) ...[
                 const SizedBox(height: 10),
-                _SpreadBar(spread: cluster.politicalSpread!),
+                SpreadBar(spread: cluster.politicalSpread!),
               ],
 
               // Countries
@@ -275,102 +276,5 @@ class ClusterCard extends StatelessWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
-  }
-}
-
-// ─── Political spread bar ─────────────────────────────────────────────────────
-
-class _SpreadBar extends StatelessWidget {
-  const _SpreadBar({required this.spread});
-
-  final PoliticalSpread spread;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    // Normalise from [-1, 1] to [0, 1] for positioning.
-    final minFrac = ((spread.min + 1) / 2).clamp(0.0, 1.0);
-    final maxFrac = ((spread.max + 1) / 2).clamp(0.0, 1.0);
-    final meanFrac = ((spread.mean + 1) / 2).clamp(0.0, 1.0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'L',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall
-                  ?.copyWith(color: cs.onSurfaceVariant),
-            ),
-            Text(
-              'Political spread',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall
-                  ?.copyWith(color: cs.onSurfaceVariant),
-            ),
-            Text(
-              'R',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall
-                  ?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final w = constraints.maxWidth;
-            return SizedBox(
-              height: 8,
-              child: Stack(
-                children: [
-                  // Track
-                  Container(
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  // Coverage range
-                  Positioned(
-                    left: minFrac * w,
-                    width: (maxFrac - minFrac) * w,
-                    top: 0,
-                    bottom: 0,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: cs.primary.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                  // Mean marker
-                  Positioned(
-                    left: (meanFrac * w - 2).clamp(0, w - 4),
-                    top: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 4,
-                      decoration: BoxDecoration(
-                        color: cs.primary,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ],
-    );
   }
 }
