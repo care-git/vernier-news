@@ -129,14 +129,24 @@ populate and we **unfreeze the digest** — with "Top stories" retained as a
 category-independent section. This is the last step, deliberately built on a system
 that actually has categories rather than papering over the gap.
 
-## Open decisions (need your steer)
+## Decisions
 
-1. The **broad category list** (~12) — define and publicly document (this is a
-   product/editorial call, kept deliberately conventional).
-2. **Theme / Niche cut depths** — where to slice the dendrogram for presentation.
-3. **Label model** — small local LLM (fits 5 GB) vs occasional cloud call for
-   higher-quality labels (infrequent → cheap).
-4. Initial **coherence / min-size / merge thresholds** — seed values, then calibrate.
+- **Broad category list — candidate now, finalised after the tree is built.**
+  Working set: *World, Politics, Business & Economy, Technology, Science, Health,
+  Environment, Culture, Sport.* Deliberately not set in stone: the emergent topic
+  tree's top-level structure will inform the final list (and any merges/splits), so
+  this is confirmed only once the tree exists.
+- **Label model — small local LLM, zero marginal cost.** An open-weight model run
+  via Ollama on the existing VPS: free to download, free to run (no per-call charge,
+  unlike a cloud API), costs only RAM/CPU already paid for. Prefer an **Apache-2.0**
+  model (e.g. **Qwen2.5-1.5B**) to stay fully open and aligned with the AGPL project.
+  An occasional cloud pass remains an opt-in upgrade only if label quality demands it.
+- **bge-m3 int8 quantization — accepted** (small accuracy trade for the RAM win).
+
+## Still open
+
+- **Theme / Niche cut depths** — where to slice the dendrogram for presentation.
+- Initial **coherence / min-size / merge thresholds** — seed values, then calibrate.
 
 ## Overall sequencing
 
