@@ -12,9 +12,11 @@ from app.models.settings import Setting
 class PipelineTuning:
     """Tunable thresholds for the ingest pipeline.
 
-    Defaults are the values the pipeline shipped with (calibrated for
-    all-MiniLM-L6-v2). They are overridden per-key by rows in the ``settings``
-    table when present, so calibration needs no code change or redeploy.
+    Defaults are the values the pipeline shipped with, calibrated for the old
+    all-MiniLM-L6-v2 embeddings. **They are stale for bge-m3** and are recalibrated
+    as part of the clustering rework (docs/clustering-fix-spec.md) — which is done
+    by editing the ``settings`` table, not this file. Rows in that table override
+    these per key; missing keys fall back to the values here.
     """
 
     # Clustering
