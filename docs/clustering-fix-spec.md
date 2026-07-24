@@ -47,12 +47,21 @@ responsibility to land here.
 - **Model:** `BAAI/bge-m3` — multilingual, 1024-dim, 8k context, strong same-event
   separation. Multilingual is the mission-critical gain: it lets a French, Arabic,
   and English article on the same event cluster together.
-- **Footprint:** run **quantized (ONNX int8)** → ~1.5–2 GB resident in the worker
-  (vs ~2.5–3.5 GB fp32), comfortably within the ~5 GB free on the 8 GB VPS. No
-  query/passage prefix required (unlike e5), so it's operationally simpler.
-- **Schema:** `Article.embedding` `Vector(384)` → `Vector(1024)`; Alembic migration;
-  HNSW index rebuild.
-- **Backfill:** re-embed the existing corpus (batch job; hours, not days).
+- **Footprint (measured, 24 July 2026):** plain **fp32 PyTorch peaks at 2.05 GB** —
+  comfortably inside the ~5 GB free. **int8 quantisation was therefore dropped**: it
+  is unnecessary, and `BAAI/bge-m3` ships no prebuilt int8 (only fp32 ONNX), so
+  quantising would have meant a memory-hungry export step running during
+  `make build` *on the VPS* — a real OOM risk for no benefit. No query/passage
+  prefix required (unlike e5), so it's operationally simpler too.
+- **Measured quality:** same story across languages embeds at EN↔FR 0.891 /
+  EN↔ES 0.901, vs 0.357 for an unrelated story. Semantic similarity can therefore
+  carry clustering on its own, which is what §2 assumes.
+- **Schema:** `Article.embedding` `Vector(384)` → `Vector(1024)`; Alembic migration.
+  **There was no ANN index at all** — every cosine query was a sequential scan over
+  the corpus, which is likely a major cause of the precompute jobs being slow. The
+  migration therefore *creates* an HNSW (`vector_cosine_ops`) index.
+- **Backfill:** re-embed the existing corpus — measured ~126 texts/s locally
+  (≈5 min for 36k); allow ~15–25 min on the VPS. Resumable via `scripts/reembed.py`.
 - **Re-tune:** dedup (`< 0.01`) and clustering thresholds are calibrated to MiniLM's
   distance distribution and **must be recalibrated** to bge-m3's (see §5).
 

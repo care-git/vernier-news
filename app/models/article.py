@@ -4,6 +4,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.config import EMBEDDING_DIM
 from app.database import Base
 
 
@@ -26,7 +27,7 @@ class Article(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
     wire_flag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     wire_tier: Mapped[int | None] = mapped_column(Integer)  # 0–4; None until computed
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(384))
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
 
     outlet: Mapped["Outlet"] = relationship(back_populates="articles")  # noqa: F821
     cluster_memberships: Mapped[list["ArticleCluster"]] = relationship(  # noqa: F821
