@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.16.1 (2026-07-24)
+
+### Bug Fixes
+
+- **scripts**: Run reembed via python -m and add make target
+  ([`62a52a0`](https://github.com/care-git/vernier-news/commit/62a52a0e786dee2b8037b44d7f0807d7bba5317e))
+
+
 ## v0.16.0 (2026-07-24)
 
 ### Documentation
