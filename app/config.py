@@ -1,5 +1,13 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Embedding model — the shared substrate for dedup, clustering, and categorisation.
+# Deliberately module constants rather than env settings: the dimension defines the
+# pgvector column width, so changing either requires a migration + full re-embed.
+# bge-m3 is multilingual (same story in different languages embeds close together)
+# and measures ~2GB resident in fp32, which fits the VPS without quantisation.
+EMBEDDING_MODEL = "BAAI/bge-m3"
+EMBEDDING_DIM = 1024
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

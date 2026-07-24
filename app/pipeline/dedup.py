@@ -3,34 +3,19 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.article import Article
 from app.models.outlet import Outlet
 from app.pipeline import tuning
+from app.pipeline.embedding import embedding_text, generate_embedding
 from app.pipeline.ingestion.normalise import NormalisedArticle
 
 logger = logging.getLogger(__name__)
 
-# Loaded once per worker process on first call.
-_model: SentenceTransformer | None = None
-
 # Wire tier + dedup thresholds now live in the `settings` table — see
-# app/pipeline/tuning.py.
-
-
-def _get_model() -> SentenceTransformer:
-    global _model
-    if _model is None:
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
-    return _model
-
-
-def generate_embedding(text: str) -> list[float]:
-    """Generate a 384-dimension embedding using all-MiniLM-L6-v2."""
-    return _get_model().encode(text, normalize_embeddings=True).tolist()
+# app/pipeline/tuning.py. The embedding model lives in app/pipeline/embedding.py.
 
 
 async def is_duplicate(url: str, embedding: list[float], db: AsyncSession) -> bool:
@@ -138,8 +123,7 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
 
     Returns the saved Article ORM object, or None if the article was a duplicate.
     """
-    text = f"{article.title} {article.body[:500]}"
-    embedding = generate_embedding(text)
+    embedding = generate_embedding(embedding_text(article.title, article.body))
 
     if await is_duplicate(article.url, embedding, db):
         logger.debug("duplicate skipped: %s", article.url)
