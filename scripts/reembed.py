@@ -2,7 +2,11 @@
 
 Run this immediately after migration 0007, which drops the old 384-dim vectors:
 
-    docker compose exec api python scripts/reembed.py
+    make reembed
+    # equivalently: docker compose exec api python -m scripts.reembed
+
+Must be invoked with `python -m` (not by file path) so that /app is on sys.path
+and `app` is importable — same convention as scripts/seed.py.
 
 Resumable: it only selects articles whose embedding IS NULL, so if it is
 interrupted you can simply run it again and it picks up where it left off.

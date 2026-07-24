@@ -1,4 +1,4 @@
-.PHONY: up down build test lint format migrate seed logs shell
+.PHONY: up down build test lint format migrate seed reembed logs shell
 
 up:
 	docker compose up -d
@@ -28,6 +28,9 @@ migration:
 
 seed:
 	docker compose exec api python -m scripts.seed
+
+reembed:
+	docker compose exec api python -m scripts.reembed
 
 logs:
 	docker compose logs -f api
