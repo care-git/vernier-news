@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.17.0 (2026-07-24)
+
+### Features
+
+- **scripts**: Add read-only corpus analysis and calibration report
+  ([`0152695`](https://github.com/care-git/vernier-news/commit/015269573f1c571bc387ba17208ce026b657f34f))
+
+
 ## v0.16.1 (2026-07-24)
 
 ### Bug Fixes
