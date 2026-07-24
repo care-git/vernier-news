@@ -1,6 +1,31 @@
 # CHANGELOG
 
 
+## v0.16.0 (2026-07-24)
+
+### Documentation
+
+- Add v0.4 amendment notes to CONCEPT and PROJECT
+  ([`49b17b4`](https://github.com/care-git/vernier-news/commit/49b17b41753bc2ef4e434eb6c9d8be6c7c566b7b))
+
+- Record measured bge-m3 footprint and drop int8 plan
+  ([`4f17798`](https://github.com/care-git/vernier-news/commit/4f17798f8edbad9dd098e0528333651687b42e60))
+
+- Update HANDOFF to current pipeline-rework state
+  ([`2ce7f06`](https://github.com/care-git/vernier-news/commit/2ce7f060c343682828d4d2c4cd585aa399a52190))
+
+### Features
+
+- **db**: Migrate embeddings to 1024-dim and add HNSW index
+  ([`3b7d534`](https://github.com/care-git/vernier-news/commit/3b7d5341ccc32519c4fa8460a0f58be4688ab450))
+
+- **pipeline**: Add re-embed backfill script
+  ([`6c03878`](https://github.com/care-git/vernier-news/commit/6c038787bb99fe44c58eb44adafef60cc0587323))
+
+- **pipeline**: Switch embeddings to bge-m3 (1024-dim)
+  ([`6a95606`](https://github.com/care-git/vernier-news/commit/6a956067879ea6487d2129b732facf9ec88425a9))
+
+
 ## v0.15.1 (2026-07-23)
 
 ### Bug Fixes
