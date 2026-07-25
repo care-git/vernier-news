@@ -142,6 +142,25 @@ async def sources(db) -> None:
         print(f"  {r.lang:<10}{r.n:>8,}  ({r.n / total:.1%})")
     print("\n(bge-m3 is multilingual — if this is ~all English, that capability is unused for now)")
 
+    section("3c. BODY LENGTH BY SOURCE")
+    print("Short bodies (RSS summary only) make the embedding title-dominated. This")
+    print("shows whether that is inherent to a source or a fixable full-text gap.\n")
+    rows = (
+        await db.execute(
+            text(
+                "select o.name, count(a.id) as n, "
+                "  sum(case when length(a.body) < 200 then 1 else 0 end) as short, "
+                "  round(avg(length(a.body))) as avg_len "
+                "from outlets o join articles a on a.outlet_id = o.id "
+                "group by o.id, o.name having count(a.id) > 0 order by n desc"
+            )
+        )
+    ).all()
+    print(f"{'outlet':<28}{'articles':>10}{'% short':>10}{'avg body chars':>16}")
+    for r in rows:
+        pct = r.short / r.n if r.n else 0
+        print(f"{r.name[:27]:<28}{r.n:>10,}{pct:>9.0%}{r.avg_len or 0:>16,}")
+
 
 async def leaning(db) -> None:
     section("4. POLITICAL LEANING COVERAGE")
