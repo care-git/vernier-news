@@ -270,7 +270,7 @@ All three CI jobs pass on push to `main`:
 | User | `deploy` (sudo) |
 | Docker | 29.5.1 |
 | Services | All running: caddy, api, postgres, redis, worker, beat, bot |
-| Migrations | 0001–0006 applied |
+| Migrations | 0001–0007 applied (0007 = bge-m3 1024-dim embeddings + HNSW index) |
 | Seed data | Loaded (categories + outlets incl. Hacker News) |
 | Health check | `curl https://vernier.news/health` → `{"status":"ok","version":"0.1.0"}` |
 | HTTPS | Live via Caddy + Let's Encrypt. Cert auto-renews. |
@@ -548,9 +548,21 @@ Output at `client/build/web/` — static files to be served by Caddy.
 
 ### Active — pipeline rework (blocking the digest)
 
-- **Digest is empty.** Three compounding causes: (a) the precompute cache is empty on the VPS — `/health` shows `cluster summaries cached: 0` and `digests cached: 0`, so the hourly `precompute_*` jobs aren't populating Redis (investigate worker/beat logs; the 21k-cluster summary job is likely too heavy / failing); (b) the digest groups by category via an inner join; and (c) all articles are uncategorised. The digest is deliberately left "frozen" until categorisation works — a "Top stories" fallback + real categories will unfreeze it.
-- **Clustering over-fragmentation.** 21,329 clusters from 35,931 articles (~1.7/cluster) — mostly singletons. Root cause: exact-string entity-Jaccard at 0.4 weight drags related articles below the 0.45 join threshold; MiniLM is English-centric. Fix plan: `docs/clustering-fix-spec.md`.
+- **Digest is empty — now down to one cause.** The precompute cache is healthy again (`/health` shows ~21.9k `cluster summaries cached`). The earlier "cached: 0" was **not** a precompute failure — it coincided with the reboot that left worker/beat down (the restart-policy bug), so the hourly jobs simply weren't running. With restart policies in place they populate fine. The one remaining blocker is that the digest groups by category via an inner join while all articles are uncategorised — the **"Top stories" fallback** (category-independent group) now unblocks it and is quick, since summaries are cached.
+- **Clustering over-fragmentation.** ~22.3k clusters from ~37.7k articles (~1.69/cluster) — 79.7% singletons. Root cause: exact-string entity-Jaccard at 0.4 weight drags related articles below the 0.45 join threshold. bge-m3 is now deployed (helps), but the **scoring is still MiniLM-era**; next is rescore (semantic-primary) + recalibrated thresholds + a full re-cluster. Fix plan: `docs/clustering-fix-spec.md`.
 - **Categorisation gap.** Ollama never ran on the VPS. Being **replaced** (not deferred) by embedding-driven categorisation: `docs/categorisation-design.md`.
+
+### Corpus audit — findings (25 July 2026)
+
+Full read-only audit via `scripts/analyse_corpus.py` (`make analyse`). Snapshot at ~37.7k articles:
+
+- **Political skew — mission-level constraint.** Article-weighted spectrum was **~54% centre-left, ~45% centre, ~1% centre-right, 0% far-left, 0% far-right**. The SpreadBar and the future RAS "political centroid" anti-bias mechanism are only as agnostic as this distribution — a skewed corpus makes the "neutral" pick systematically centre-left. Partly addressed by adding Fox/Telegraph/Economist feeds (25 Jul); still no genuinely far-left or far-right sources (the library tops out at ±0.55) — a deliberate **curation gap** to close.
+- **Language.** Was **100% English**; native-language feeds (Le Monde FR, El País ES, Der Spiegel DE) added 25 Jul, so es/de/fr now flow. bge-m3's multilingual value is only now starting to be exercised.
+- **Source concentration.** The Guardian alone was ~36% of the corpus; top 7 outlets ~95%. High-volume right-of-centre and non-English feeds added to rebalance the *incoming* mix (the back-catalogue still skews the cumulative view).
+- **Short bodies — quality cap.** `no body` is 0, but **~48% of articles have a body < 200 chars** (RSS summary only, not full text). For those, the embedding is title-dominated, which caps clustering *and* categorisation quality more than any threshold will. Which sources are short (inherent, e.g. NYT abstracts) vs fixable (full text available) is not yet broken down. Full-text enrichment (Layer 4) is the eventual fix.
+- **Similarity distributions (bge-m3), stable across two runs:** random pairs p95 ≈ 0.45, same-cluster pairs p5 ≈ 0.57 / p50 ≈ 0.72, nearest-neighbour p50 ≈ 0.77. Clean noise/signal gap ~0.45–0.57 — the join threshold lives there.
+- **Wire-tier risk.** Thresholds are MiniLM-era; the tier-2 band (0.70–0.88) now catches the bge-m3 nearest-neighbour median (~0.77), so a large share of articles will be mislabelled "probable wire" (0.25 of a source), silently gutting `independent_source_count`. Must be recalibrated alongside clustering.
+- **Index health.** The HNSW index (migration 0007) is confirmed in use for KNN.
 
 ### Defer to Phase 3 — already planned
 
@@ -571,7 +583,7 @@ These are settled — not open questions:
 - **Political leaning seed data:** MBFC public dataset. Acknowledged explicitly in soft launch materials.
 - **Wire propagation:** Four-tier detection system. Phase 1 logs tiers only — collapsing activates in Phase 3 after empirical calibration. Thresholds live in the `settings` table (`app/pipeline/tuning.py`).
 - **Pipeline tuning:** clustering, dedup, and wire-tier thresholds live in the `settings` table, loaded via `app/pipeline/tuning.py` with code defaults as fallback. Enables calibration without redeploys.
-- **Embeddings:** **being upgraded** from `all-MiniLM-L6-v2` (384-dim) to **bge-m3** (multilingual, 1024-dim, int8 ONNX; ~1.5–2GB RAM). Multilingual is the key gain (clustering/categorisation across languages). Shared substrate for dedup, clustering, and categorisation. See `docs/clustering-fix-spec.md`.
+- **Embeddings:** **bge-m3** (multilingual, 1024-dim), deployed 24 Jul (migration 0007, corpus re-embedded). fp32 measured ~2.05GB resident — int8 quantisation was planned but dropped as unnecessary. Model lives in `app/pipeline/embedding.py`; the dimension is a code constant (`app/config.py`) because it defines the pgvector column width. Shared substrate for dedup, clustering, and categorisation. See `docs/clustering-fix-spec.md`.
 - **Clustering score:** originally 0.6 × cosine + 0.4 × Jaccard, threshold 0.45 — **being reworked** to semantic-primary with entity overlap as a booster (the exact-Jaccard term caused over-fragmentation). Entity cache stored as JSONB on `Cluster`. See `docs/clustering-fix-spec.md`.
 - **Categorisation:** **superseded.** No on-box 7B Ollama. Two-layer, embedding-driven, low-bias: a small curated set of broad categories (assigned to clusters by centroid similarity) + a fully-emergent topic hierarchy (BERTopic-style over cluster centroids), with a **small local LLM (Qwen2.5-1.5B, Apache-2.0) for topic labelling only** — free to run, no per-call cost. Categorise at the **cluster** level. Broad-category list finalised after the topic tree is built. See `docs/categorisation-design.md`.
 - **Free tier article selection:** Representative Article Score (RAS) — 6 dimensions including political centroid proximity to prevent systematic bias.
