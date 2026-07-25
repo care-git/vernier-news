@@ -54,13 +54,31 @@ def extract_entities(text: str) -> list[str]:
     return entities
 
 
-def _jaccard(a: list[str], b: list[str]) -> float:
-    set_a = {e.lower() for e in a}
-    set_b = {e.lower() for e in b}
-    union = set_a | set_b
-    if not union:
+# Leading titles/honorifics stripped so "President Trump" and "Trump" match.
+_ENTITY_PREFIXES = ("the ", "mr ", "mrs ", "ms ", "dr ", "president ", "sir ", "prime minister ")
+
+
+def _normalise_entity(entity: str) -> str:
+    text = entity.strip().lower()
+    for prefix in _ENTITY_PREFIXES:
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    return text
+
+
+def _entity_overlap(a: list[str], b: list[str]) -> float:
+    """Overlap coefficient |A∩B| / min(|A|,|B|) over normalised entities.
+
+    Overlap coefficient rather than Jaccard so a short entity list shared with a
+    longer one isn't penalised by the union size — the old Jaccard term was
+    systematically low and dragged genuinely related articles below threshold.
+    """
+    set_a = {_normalise_entity(e) for e in a} - {""}
+    set_b = {_normalise_entity(e) for e in b} - {""}
+    if not set_a or not set_b:
         return 0.0
-    return len(set_a & set_b) / len(union)
+    return len(set_a & set_b) / min(len(set_a), len(set_b))
 
 
 async def assign_cluster(
@@ -73,8 +91,10 @@ async def assign_cluster(
 ) -> int:
     """Assign the article to the best matching active cluster, or create a new one.
 
-    Scoring: combined = 0.6 * semantic_similarity + 0.4 * entity_jaccard
-    An article joins a cluster when combined >= 0.45.
+    Semantic-primary scoring: iterating candidate clusters closest-first, join the
+    first whose nearest-member similarity is >= join_semantic_high, or is
+    >= join_semantic_mid with entity overlap >= join_entity_min. Otherwise seed a
+    new cluster.
 
     Returns the cluster_id.
     """
@@ -103,16 +123,19 @@ async def assign_cluster(
     best_cluster_id: int | None = None
     best_score = 0.0
 
+    # Candidates are ordered closest-first; take the first that clears the join rule.
     for row in rows:
         semantic_score = 1.0 - row.min_dist
-        entity_score = _jaccard(entities, row.entity_cache or [])
-        combined = t.semantic_weight * semantic_score + t.entity_weight * entity_score
-
-        if combined > best_score:
-            best_score = combined
+        if semantic_score < t.join_semantic_mid:
+            break  # remaining candidates are only further away — none can qualify
+        if semantic_score >= t.join_semantic_high or (
+            _entity_overlap(entities, row.entity_cache or []) >= t.join_entity_min
+        ):
             best_cluster_id = row.cluster_id
+            best_score = semantic_score
+            break
 
-    if best_cluster_id is None or best_score < t.combined_score_threshold:
+    if best_cluster_id is None:
         # No suitable cluster — seed a new one.
         cluster = Cluster(
             first_published_at=published_at,
