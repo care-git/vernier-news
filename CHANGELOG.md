@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.18.0 (2026-07-25)
+
+### Build System
+
+- Order model download before pyproject to keep layer cached
+  ([`6a8be98`](https://github.com/care-git/vernier-news/commit/6a8be98be2d8160666a0819372a2ed89ef6814b4))
+
+### Features
+
+- **scripts**: Add RSS feed liveness checker
+  ([`8b46607`](https://github.com/care-git/vernier-news/commit/8b46607d3c682ebc2b7c3c3ae82ef9c2ce423fb1))
+
+- **sources**: Add right-of-centre and non-English feeds
+  ([`d1dc56b`](https://github.com/care-git/vernier-news/commit/d1dc56b08ebbc63f3e4c497c36ba5ea8413c9b2a))
+
+
 ## v0.17.0 (2026-07-24)
 
 ### Features
