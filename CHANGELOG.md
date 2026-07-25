@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.19.0 (2026-07-25)
+
+### Documentation
+
+- Record corpus audit findings
+  ([`6de9bff`](https://github.com/care-git/vernier-news/commit/6de9bfff05ff7d77601a988088b1e57811de5c27))
+
+### Features
+
+- **db**: Recalibrate clustering and wire thresholds for bge-m3
+  ([`93da80a`](https://github.com/care-git/vernier-news/commit/93da80a1b015a425118e2dc4b717bae7d393ca54))
+
+- **pipeline**: Semantic-primary clustering with entity booster
+  ([`4bcc9a9`](https://github.com/care-git/vernier-news/commit/4bcc9a99df4ee6c38ae28762bffe0c0c90455147))
+
+- **scripts**: Add recluster harness and body-length analysis
+  ([`175aef4`](https://github.com/care-git/vernier-news/commit/175aef44d28074dca04227a71f07729f56578403))
+
+
 ## v0.18.0 (2026-07-25)
 
 ### Build System
