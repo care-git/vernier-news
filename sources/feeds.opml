@@ -114,5 +114,50 @@
                htmlUrl="https://theintercept.com"/>
     </outline>
 
+    <!-- Added 24 July 2026 to counter the corpus's heavy left skew (was 54% centre-left,
+         44% centre, <1% right). These are the right-of-centre sources; all verified live
+         via scripts/check_feed. -->
+    <outline text="Balance — right-of-centre" title="Balance — right-of-centre">
+      <outline type="rss" text="Fox News — Politics" title="Fox News — Politics"
+               domain="foxnews.com"
+               xmlUrl="https://moxie.foxnews.com/google-publisher/politics.xml"
+               htmlUrl="https://www.foxnews.com/politics"/>
+      <outline type="rss" text="Fox News — World" title="Fox News — World"
+               domain="foxnews.com"
+               xmlUrl="https://moxie.foxnews.com/google-publisher/world.xml"
+               htmlUrl="https://www.foxnews.com/world"/>
+      <outline type="rss" text="The Daily Telegraph" title="The Daily Telegraph"
+               domain="telegraph.co.uk"
+               xmlUrl="https://www.telegraph.co.uk/rss.xml"
+               htmlUrl="https://www.telegraph.co.uk"/>
+      <outline type="rss" text="The Economist" title="The Economist"
+               domain="economist.com"
+               xmlUrl="https://www.economist.com/latest/rss.xml"
+               htmlUrl="https://www.economist.com"/>
+    </outline>
+
+    <!-- Added 24 July 2026 to exercise bge-m3's multilingual clustering (corpus was
+         100% English). Native-language feeds; all verified live via scripts/check_feed.
+         Note: these sources are centre-left, so they widen language coverage but do not
+         help the political balance above. -->
+    <outline text="International — non-English" title="International — non-English">
+      <outline type="rss" text="Le Monde (FR)" title="Le Monde (FR)"
+               domain="lemonde.fr"
+               xmlUrl="https://www.lemonde.fr/rss/une.xml"
+               htmlUrl="https://www.lemonde.fr"/>
+      <outline type="rss" text="El País (ES)" title="El País (ES)"
+               domain="elpais.com"
+               xmlUrl="https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada"
+               htmlUrl="https://elpais.com"/>
+      <outline type="rss" text="El País (English)" title="El País (English)"
+               domain="elpais.com"
+               xmlUrl="https://feeds.elpais.com/mrss-s/pages/ep/site/english.elpais.com/portada"
+               htmlUrl="https://english.elpais.com"/>
+      <outline type="rss" text="Der Spiegel (DE)" title="Der Spiegel (DE)"
+               domain="spiegel.de"
+               xmlUrl="https://www.spiegel.de/schlagzeilen/index.rss"
+               htmlUrl="https://www.spiegel.de"/>
+    </outline>
+
   </body>
 </opml>
