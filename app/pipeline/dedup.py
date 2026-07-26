@@ -17,6 +17,29 @@ logger = logging.getLogger(__name__)
 # Wire tier + dedup thresholds now live in the `settings` table — see
 # app/pipeline/tuning.py. The embedding model lives in app/pipeline/embedding.py.
 
+# Marks an article whose exact headline this outlet has published before: a recurring
+# format rather than a one-off story. Kept, but never story-clustered — see the
+# Article.content_type column (migration 0009).
+CONTENT_TYPE_RECURRING = "recurring"
+
+
+async def detect_recurring(outlet_id: int, title: str, db: AsyncSession) -> bool:
+    """Return True if this outlet has already published an article under this title.
+
+    Recurring formats — the Guardian's daily corrections column, fixture listings,
+    live-briefing stubs, radio-programme entries — reuse one headline indefinitely.
+    They cannot be told apart from real coverage by body length (roughly a third of
+    the corpus is summary-only, including outlets that cluster well), but an exact
+    repeat of a headline from the same outlet is a reliable signal.
+    """
+    result = await db.execute(
+        select(Article.id)
+        .where(Article.outlet_id == outlet_id)
+        .where(Article.title == title)
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
 
 async def is_duplicate(url: str, embedding: list[float], db: AsyncSession) -> bool:
     """Return True if this article already exists (by URL or near-identical content).
@@ -119,7 +142,8 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
         1. Generate embedding from title + body excerpt
         2. Check for exact URL duplicate or near-identical content (returns None if found)
         3. Compute and log wire tier (Phase 1: log only, no collapsing)
-        4. Write Article record to the database
+        4. Flag recurring formats so the caller can skip story clustering
+        5. Write Article record to the database
 
     Returns the saved Article ORM object, or None if the article was a duplicate.
     """
@@ -130,6 +154,11 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
         return None
 
     tier, similarity = await get_wire_tier(article, embedding, db)
+
+    content_type = None
+    if await detect_recurring(article.outlet_id, article.title, db):
+        content_type = CONTENT_TYPE_RECURRING
+        logger.info("recurring format (not clustered): %s — %s", article.title, article.url)
 
     db_article = Article(
         url=article.url,
@@ -144,6 +173,7 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
         collection_source=article.collection_source,
         wire_flag=False,  # activated in Phase 3 calibration
         wire_tier=tier if tier < 4 else None,
+        content_type=content_type,
         embedding=embedding,
     )
     db.add(db_article)

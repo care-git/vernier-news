@@ -78,16 +78,18 @@ def ingest_feeds() -> dict:
                     if db_article is None:
                         continue
 
-                    entities = extract_entities(f"{article.title} {article.body}")
-                    cluster_id = await assign_cluster(
-                        db_article.id,
-                        db_article.embedding,
-                        entities,
-                        db_article.published_at,
-                        db_article.wire_tier,
-                        db,
-                    )
-                    await update_cluster_metadata(cluster_id, db)
+                    # Recurring formats are stored but never story-clustered.
+                    if db_article.content_type is None:
+                        entities = extract_entities(f"{article.title} {article.body}")
+                        cluster_id = await assign_cluster(
+                            db_article.id,
+                            db_article.embedding,
+                            entities,
+                            db_article.published_at,
+                            db_article.wire_tier,
+                            db,
+                        )
+                        await update_cluster_metadata(cluster_id, db)
                     saved += 1
                 except Exception:
                     logger.exception("failed to process article: %s", article.url)
@@ -111,10 +113,12 @@ def cluster_pass() -> dict:
 
             from app.models.cluster import ArticleCluster
 
-            # Find articles with no cluster membership.
+            # Find articles with no cluster membership. Recurring formats are
+            # deliberately unclustered, so they must not be picked up here.
             result = await db.execute(
                 select(Article)
                 .where(Article.embedding.isnot(None))
+                .where(Article.content_type.is_(None))
                 .where(
                     not_(
                         exists(

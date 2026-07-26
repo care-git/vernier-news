@@ -21,6 +21,11 @@ async def fetch(outlet_id: int, api_key: str) -> list[NormalisedArticle]:
         "show-fields": "bodyText,byline",
         "page-size": _PAGE_SIZE,
         "order-by": "newest",
+        # /search returns videos, galleries, crosswords and interactives alongside
+        # articles, and none of those carry a bodyText field — they were arriving as
+        # articles with empty bodies. The Guardian API is in the stack precisely for
+        # full body text, so restrict it to the content type that has one.
+        "type": "article",
     }
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
