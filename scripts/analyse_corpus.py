@@ -241,6 +241,50 @@ async def cluster_shape(db) -> None:
         )
 
 
+async def clustering_vs_body(db) -> None:
+    section("6b. DOES BODY LENGTH DRIVE SINGLETONS?")
+    print("Hypothesis: headline-only articles can't cluster (terse title, no entities).")
+    print("If the short-body singleton rate is far higher, full-text enrichment is the fix.\n")
+
+    _SIZES = (
+        "with sz as (select cluster_id, count(*) as size from article_cluster group by cluster_id) "
+    )
+
+    rows = (
+        await db.execute(
+            text(
+                _SIZES + "select case when length(a.body) < 200 then 'headline-only (<200)' "
+                "else 'has body (>=200)' end as cls, count(*) as n, "
+                "sum(case when sz.size = 1 then 1 else 0 end) as singletons "
+                "from articles a join article_cluster ac on ac.article_id = a.id "
+                "join sz on sz.cluster_id = ac.cluster_id group by 1 order by 1"
+            )
+        )
+    ).all()
+    print("singleton rate by body class:")
+    for r in rows:
+        rate = r.singletons / r.n if r.n else 0
+        print(f"  {r.cls:<24}{r.singletons:>8,} / {r.n:<8,} singletons  ({rate:.0%})")
+
+    rows = (
+        await db.execute(
+            text(
+                _SIZES + "select o.name, count(*) as n, "
+                "sum(case when sz.size = 1 then 1 else 0 end) as singletons, "
+                "round(avg(length(a.body))) as avg_len "
+                "from articles a join outlets o on o.id = a.outlet_id "
+                "join article_cluster ac on ac.article_id = a.id "
+                "join sz on sz.cluster_id = ac.cluster_id "
+                "group by o.id, o.name having count(*) >= 50 order by count(*) desc"
+            )
+        )
+    ).all()
+    print(f"\n{'outlet':<28}{'articles':>9}{'singleton %':>13}{'avg body':>10}")
+    for r in rows:
+        rate = r.singletons / r.n if r.n else 0
+        print(f"{r.name[:27]:<28}{r.n:>9,}{rate:>12.0%}{r.avg_len or 0:>10,}")
+
+
 async def similarity_profile(db) -> None:
     section("7. SIMILARITY DISTRIBUTIONS (bge-m3)")
 
@@ -384,6 +428,7 @@ async def main() -> None:
         await leaning(db)
         await wire_tiers(db)
         await cluster_shape(db)
+        await clustering_vs_body(db)
         await similarity_profile(db)
         await index_health(db)
         print("\nDone.\n")
