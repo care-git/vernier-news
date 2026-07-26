@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.21.0 (2026-07-26)
+
+### Features
+
+- **scripts**: Add qualitative clustering spot-check
+  ([`51a3777`](https://github.com/care-git/vernier-news/commit/51a3777b9f7eba82454429bd4bb77cdfb8a0edfb))
+
+
 ## v0.20.0 (2026-07-26)
 
 ### Features
