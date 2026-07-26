@@ -1,4 +1,4 @@
-.PHONY: up down build test lint format migrate seed reembed analyse recluster logs shell
+.PHONY: up down build test lint format migrate seed reembed analyse recluster spotcheck logs shell
 
 up:
 	docker compose up -d
@@ -37,6 +37,9 @@ analyse:
 
 recluster:
 	docker compose exec api python -m scripts.recluster
+
+spotcheck:
+	docker compose exec api python -m scripts.spot_check
 
 logs:
 	docker compose logs -f api
