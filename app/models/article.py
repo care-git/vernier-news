@@ -27,6 +27,9 @@ class Article(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
     wire_flag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     wire_tier: Mapped[int | None] = mapped_column(Integer)  # 0–4; None until computed
+    # None = a normal story article, the only kind that gets story-clustered.
+    # See app/pipeline/dedup.py and migration 0009.
+    content_type: Mapped[str | None] = mapped_column(String(32))
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
 
     outlet: Mapped["Outlet"] = relationship(back_populates="articles")  # noqa: F821
