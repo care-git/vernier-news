@@ -54,11 +54,13 @@ async def _rebuild(db) -> None:
     logger.info("wiped existing clusters and memberships")
 
     # Publication order = the order the online clusterer would have seen them.
+    # content_type is not NULL for recurring formats, which the live clusterer skips.
     ids = (
         (
             await db.execute(
                 select(Article.id)
                 .where(Article.embedding.isnot(None))
+                .where(Article.content_type.is_(None))
                 .order_by(Article.published_at.asc(), Article.id.asc())
             )
         )
