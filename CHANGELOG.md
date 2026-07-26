@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.20.0 (2026-07-26)
+
+### Features
+
+- **scripts**: Add body-length vs singleton-rate diagnostic
+  ([`bb8e7bc`](https://github.com/care-git/vernier-news/commit/bb8e7bc6372845b18fdc820984531576ce45302f))
+
+
 ## v0.19.0 (2026-07-25)
 
 ### Documentation
