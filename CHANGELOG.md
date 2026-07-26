@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v0.22.0 (2026-07-26)
+
+### Bug Fixes
+
+- **ingestion**: Restrict Guardian API fetch to article content type
+  ([`fd90ec0`](https://github.com/care-git/vernier-news/commit/fd90ec06ba1ac36b59b8d90bdd343c54bd9f9ff0))
+
+### Documentation
+
+- Comprehensively update HANDOFF to current state
+  ([`73d7723`](https://github.com/care-git/vernier-news/commit/73d7723669c1eb1673e70bd5d6a46c1dbc82ebf0))
+
+### Features
+
+- **db**: Add articles.content_type for non-story records
+  ([`495e690`](https://github.com/care-git/vernier-news/commit/495e6903c2efc301273ff43c5340b54720a05462))
+
+- **pipeline**: Exclude recurring formats from story clustering
+  ([`c98b25d`](https://github.com/care-git/vernier-news/commit/c98b25de01ac5c0e6d4457f60efba5151482b36a))
+
+- **scripts**: Add recurring-article backfill
+  ([`bd9d108`](https://github.com/care-git/vernier-news/commit/bd9d10886fddfddd1be7e610a582ab66f1b0977b))
+
+
 ## v0.21.0 (2026-07-26)
 
 ### Features
