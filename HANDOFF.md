@@ -1,6 +1,6 @@
 # Vernier News — Handoff Document
 
-*Last updated: 23 July 2026*
+*Last updated: 26 July 2026*
 
 ---
 
@@ -56,6 +56,17 @@ Break changes into separate commits where the type or scope differs. Do not batc
 
 ## Current state
 
+### Snapshot — read this first (26 July 2026)
+
+**Phases 0 & 1 are complete and live on the VPS. Phase 2 (MVP clients) is in progress but paused on a pipeline-quality rework that emerged mid-phase.** Current release: **v0.20.0**.
+
+- **What works and is deployed:** ingestion (RSS/OPML + 6 API connectors), dedup, clustering, the Redis precompute cache, the Flutter Web PWA (auth → onboarding → digest → cluster-detail screens), and the Telegram control bot.
+- **bge-m3 (multilingual, 1024-dim) is the embedding model** as of 24 Jul (migration 0007) — corpus re-embedded, HNSW index created. Clustering was rescored to a **semantic-primary** model (migration 0008).
+- **The digest is deliberately "frozen"** (users see an empty state). It groups clusters by category, but categorisation has never run (no Ollama on the VPS) so every article is uncategorised. Unfreezing needs a category-independent **"Top stories"** group — now quick, because the precompute cache is healthy.
+- **Active work:** improving clustering *quality* (not chasing the singleton count — see below), then unfreezing the digest, then categorisation.
+
+**⚠️ Crucial correction — read before touching clustering.** The ~84% singleton rate looks like a bug, but a diagnostic (`§6b` of `make analyse`) **falsified the "short bodies cause it" hypothesis**: short-body articles are 46% singleton, full-body 48% — essentially identical, with zero per-outlet correlation (ProPublica, 13k-char bodies → 89% singleton; Al Jazeera, ~112-char bodies → 29%). Singletons track **coverage overlap**, not data quality: wire/breaking outlets cluster well; investigative, niche, and foreign-language outlets are *legitimately* singleton in a 31-outlet corpus. **Do NOT build full-text scraping to "fix clustering" — it won't.** The genuinely-broken parts are smaller and specific: single-linkage **chaining** (loose mega-clusters) and ~6–14% **under-grouping**. Details in Outstanding issues.
+
 ### Phase 0 — complete and deployed
 
 Phase 0 is fully running on the VPS. Health check passes, all migrations are applied, seed data loaded.
@@ -102,12 +113,12 @@ app/
   pipeline/
     tasks.py            — 5 Celery tasks; each pipeline run calls tuning.refresh() first
     tuning.py           — PipelineTuning dataclass + loader; thresholds from the settings table
-    dedup.py            — sentence-transformers embed, URL+cosine dedup, wire tier detection
-                          (thresholds via tuning)
-    clustering.py       — spaCy NER, pgvector candidate search, Jaccard+cosine scoring
-                          (thresholds via tuning; being reworked — docs/clustering-fix-spec.md)
-    categorise.py       — Ollama (Mistral 7B) — being superseded by embedding-based
-                          categorisation (docs/categorisation-design.md)
+    embedding.py        — bge-m3 loader + generate_embedding(s) + embedding_text (shared)
+    dedup.py            — embeds via embedding.py, URL+cosine dedup, wire tier detection
+    clustering.py       — spaCy NER + pgvector candidate search; semantic-primary join
+                          (nearest-member similarity + entity-overlap booster; thresholds via tuning)
+    categorise.py       — Ollama (Mistral 7B) — LEGACY, never ran on VPS; being replaced by
+                          embedding-based categorisation (docs/categorisation-design.md)
     ingestion/
       normalise.py      — NormalisedArticle dataclass, HTML strip (bs4/lxml), langdetect
       rss.py            — parse_opml(), ingest_feed(), ingest_opml()
@@ -129,6 +140,8 @@ migrations/
     20260519_0004_add_article_category_id.py
     20260519_0005_widen_collection_source.py               — VARCHAR(50) → Text
     20260723_0006_add_settings_table.py                    — pipeline tuning key/value + seed
+    20260724_0007_bge_m3_embeddings.py                     — Vector(384)→(1024) + HNSW index
+    20260725_0008_recalibrate_clustering.py                — semantic-primary + wire thresholds
 bot/                    — Telegram control bot (replaces OpenClaw); LLM-free, long-polling
   config.py             — BotConfig (pydantic-settings); allowlist parsing
   admin_client.py       — async httpx wrapper over /admin/* (typed AdminError)
@@ -214,9 +227,15 @@ client/                 — Flutter Web PWA (Phase 2)
                           url_launcher
 scripts/
   seed.py               — 10 categories + 31 outlets (incl. Hacker News), MBFC leaning data
+  reembed.py            — resumable backfill: embed articles with NULL embedding (make reembed)
+  analyse_corpus.py     — read-only corpus audit (make analyse) — the main diagnostic
+  spot_check.py         — qualitative clustering spot-check (make spotcheck)
+  recluster.py          — destructive wipe+rebuild of clusters (make recluster); eval harness
+  check_feed.py         — RSS feed liveness checker (feedparser); vet URLs before adding to OPML
 sources/
-  feeds.opml            — RSS/Atom feeds: BBC, Al Jazeera, DW, France 24, The Guardian (×5),
-                          ProPublica, The Intercept
+  feeds.opml            — RSS/Atom feeds: BBC, Al Jazeera, DW, France 24, Guardian (×5),
+                          ProPublica, Intercept, + (25 Jul) Fox×2, Telegraph, Economist,
+                          Le Monde, El País×2, Der Spiegel (balance + non-English)
 tests/
   conftest.py           — NullPool engine, sync setup_db (asyncio.run), per-test async session
   test_health.py        — GET /health smoke test
@@ -229,9 +248,11 @@ docker-compose.yml      — Caddy, FastAPI, PostgreSQL (pgvector), Redis, Celery
 docker-compose.override.yml.example
                         — Dev overrides template: adds --reload + ./app volume mount to api.
                           Copy to docker-compose.override.yml locally (gitignored).
-Dockerfile              — python:3.12-slim, pre-downloads all-MiniLM-L6-v2 + en_core_web_sm
+Dockerfile              — python:3.12-slim, pre-downloads bge-m3 + en_core_web_sm; model layer
+                          ordered BEFORE pyproject copy so version bumps don't bust the cache
 pyproject.toml          — all deps, ruff/black/pytest config, semantic-release config
-Makefile                — up, down, build, test, lint, format, migrate, migration, seed
+Makefile                — up, down, build, test, lint, format, migrate, migration, seed,
+                          reembed, analyse, recluster, spotcheck
 .env.example            — copy to .env, set credentials; includes CORS_ORIGINS
 docs/
   telegram-bot-spec.md      — Telegram control bot spec
@@ -252,7 +273,7 @@ All three CI jobs pass on push to `main`:
 |---|---|---|
 | Lint | ✅ Passing | ruff + black |
 | Test | ✅ Passing | 8 tests, pgvector/pgvector:pg16 service container |
-| Release | ✅ Passing | python-semantic-release v9, current version `0.15.1` |
+| Release | ✅ Passing | python-semantic-release v9, current version `0.20.0` |
 
 ---
 
@@ -270,11 +291,11 @@ All three CI jobs pass on push to `main`:
 | User | `deploy` (sudo) |
 | Docker | 29.5.1 |
 | Services | All running: caddy, api, postgres, redis, worker, beat, bot |
-| Migrations | 0001–0007 applied (0007 = bge-m3 1024-dim embeddings + HNSW index) |
+| Migrations | 0001–0008 applied (0007 = bge-m3 1024-dim + HNSW; 0008 = clustering/wire recalibration) |
 | Seed data | Loaded (categories + outlets incl. Hacker News) |
-| Health check | `curl https://vernier.news/health` → `{"status":"ok","version":"0.1.0"}` |
+| Health check | `curl https://vernier.news/health` → `{"status":"ok","version":"0.1.0"}` (app version is hardcoded 0.1.0 in main.py; unrelated to the release version) |
 | HTTPS | Live via Caddy + Let's Encrypt. Cert auto-renews. |
-| Code | **Up to date with `main`** (v0.15.1) — settings table (migration 0006), cluster detail endpoint, and per-service restart policies all deployed. |
+| Code | **Up to date with `main`** (v0.20.0) — bge-m3 embeddings (0007), clustering recalibration (0008), cluster detail endpoint, new feeds, and per-service restart policies all deployed. Corpus re-embedded + re-clustered. |
 
 **Upgrade path (revised):** A VPS upgrade is **no longer planned**. The categorisation redesign (embedding-driven; `docs/categorisation-design.md`) fits the current 8GB CPX32 — no on-box 7B Ollama. Larger Hetzner instances (CX4x/CAX) have been perpetually out of stock and steeply price-hiked, so the architecture is designed to stay on the CPX32.
 
@@ -343,14 +364,14 @@ Every service in `docker-compose.yml` sets `restart: unless-stopped`, so the ful
 
 ## Phase 1 — data pipeline — complete
 
-All 8 steps complete and verified live on VPS. Pipeline running: **35,931 articles, 21,329 clusters, 31 outlets active** (as of 23 July 2026). The cluster/article ratio (~1.7) reveals over-fragmentation — clustering is being reworked (see Outstanding issues and `docs/clustering-fix-spec.md`).
+All 8 steps complete and verified live on VPS. Pipeline running: **~38k articles, ~21.6k clusters, 31 outlets** (26 July 2026). The ~84% singleton rate looks alarming but is **largely legitimate** — see the crucial correction in the Snapshot and Outstanding issues; clustering *quality* (not the singleton count) is the active workstream.
 
 ### Completed steps
 
 1. **NormalisedArticle + normalise()** — `app/pipeline/ingestion/normalise.py`
 2. **RSS/OPML ingestion** — `app/pipeline/ingestion/rss.py`; domain-based outlet lookup via OPML `domain` attribute
-3. **Deduplication + embeddings** — `app/pipeline/dedup.py`; sentence-transformers `all-MiniLM-L6-v2` (384-dim), URL dedup then cosine < 0.01 within 72h. Embedding model being upgraded to **bge-m3** (multilingual, 1024-dim) — see `docs/clustering-fix-spec.md`.
-4. **Clustering** — `app/pipeline/clustering.py`; spaCy NER + pgvector cosine + Jaccard, combined score threshold 0.45. Thresholds now in the `settings` table (`app/pipeline/tuning.py`); scoring being reworked to semantic-primary — see `docs/clustering-fix-spec.md`.
+3. **Deduplication + embeddings** — `app/pipeline/dedup.py` + `app/pipeline/embedding.py`; **bge-m3 (multilingual, 1024-dim)** since 24 Jul (was all-MiniLM-L6-v2). URL dedup then cosine < 0.01 within 72h. HNSW index on the vector column (migration 0007).
+4. **Clustering** — `app/pipeline/clustering.py`; spaCy NER + pgvector candidate search, **semantic-primary join** (join if nearest-member similarity ≥ `join_semantic_high` 0.78, or ≥ `join_semantic_mid` 0.68 with entity-overlap ≥ `join_entity_min` 0.30). Thresholds in the `settings` table (`app/pipeline/tuning.py`). Known limitation: single-linkage chaining — see Outstanding issues.
 5. **Categorisation** — `app/pipeline/categorise.py`; Ollama (Mistral 7B). **Never ran on the VPS** (no Ollama), so all articles are uncategorised. Being **replaced** by embedding-driven categorisation — see `docs/categorisation-design.md`.
 6. **Redis caching** — `app/cache/clusters.py` + `app/cache/digest.py`; `cluster_summary:{id}` and `digest:{user_id}`, 1h TTL
 7. **Celery tasks + API connectors** — `app/pipeline/tasks.py`; 5 tasks, 6 API connectors. Beat schedule:
@@ -479,19 +500,21 @@ Replaced the OpenClaw gateway on 23 July 2026. OpenClaw's per-message LLM agent 
 
 ### Remaining Phase 2 work
 
-**Active workstream — pipeline rework** (a prerequisite that emerged during Phase 2: the digest is empty and clusters are over-fragmented, so the pipeline is reworked before more client features):
+**Done:** bge-m3 embedding upgrade, the semantic-primary clustering rescore, and the cluster detail view (backend + Flutter) are complete and deployed.
 
-1. **bge-m3 embedding upgrade** — multilingual 1024-dim, int8 ONNX (`docs/clustering-fix-spec.md`)
-2. **Clustering fix** — semantic-primary scoring, entity de-brittling, threshold recalibration, consolidation pass
-3. **Categorisation** — embedding-driven broad categories (cluster-level) + emergent topic tree + small local LLM labelling (`docs/categorisation-design.md`)
-4. **Unfreeze the digest** — a category-independent "Top stories" group + real category groups once categorisation works
+**Active workstream — clustering quality, then unfreeze the digest:**
+
+1. **Spot-check** (`make spotcheck`) — qualitative read of real clusters/singletons to judge how much more clustering work is warranted. *(tool added; first run pending)*
+2. **Centroid matching + faithful rebuild** — the next code chunk. Match an article to a cluster **centroid** (mean embedding) instead of its nearest member, to stop single-linkage chaining; make `scripts/recluster.py` apply dormancy during replay so it faithfully mirrors live. Then calibrate thresholds (edit `settings` rows) against `make recluster` + `make analyse`.
+3. **Unfreeze the digest** — add the category-independent "Top stories" group (viable now: summaries cached). This finally puts real content on screen and makes the cluster detail view reachable.
+4. **Categorisation** — embedding-driven broad categories (cluster-level) + emergent topic tree + small local LLM labelling (`docs/categorisation-design.md`).
 
 **Then the remaining client features:**
 
 5. **User preferences screen** — category management, depth preference, account settings (email, password change)
 6. **Python CLI client** — `pip install vernier-news`, `digest` / `cluster` / `outlet` / `search` / `prefs`, full parity with PWA
 
-(Cluster detail view — **done** this session, backend + Flutter; see Completed above.)
+**Deferred (investigated, correctly parked):** full-text scraping (Layer 4) was considered as a clustering fix but the body-length hypothesis was falsified, so it returns to its Phase 4 slot. Still valuable later for categorisation depth and provenance — not for clustering.
 
 ---
 
@@ -535,33 +558,54 @@ Output at `client/build/web/` — static files to be served by Caddy.
 
 ---
 
+## Diagnostic & maintenance scripts
+
+All run in the `api` container as `python -m scripts.<name>` (exposed as `make` targets). **Deploy gotcha:** production has **no volume mount**, so a `git pull` on the VPS does NOT update the code inside the containers — a new/changed script needs either a rebuild (`make build && make up`) or a one-off `docker compose cp scripts/<x>.py api:/app/scripts/<x>.py`. Same applies to `sources/feeds.opml` (baked into the image; the ingest runs in the **worker** container, so `cp` it to `worker:` for an immediate test).
+
+- **`make analyse`** (`scripts/analyse_corpus.py`) — the main read-only audit: corpus composition, source health, language, political-leaning coverage, wire tiers, cluster-size distribution, **§3c body-length by source**, **§6b body-length-vs-singletons**, bge-m3 similarity distributions, consolidation opportunity, and index health. Safe on production; sampled.
+- **`make spotcheck`** (`scripts/spot_check.py`) — qualitative: random multi-source clusters, the largest clusters, and random singletons with titles+outlets, to judge clustering by eye.
+- **`make recluster`** (`scripts/recluster.py`) — **destructive**: wipes all clusters and rebuilds from scratch in publication order using the current `settings`. The evaluation harness for clustering changes. Stop `worker`/`beat` first (`docker compose stop worker beat`). Safe **only** while the digest is frozen and nothing depends on cluster IDs.
+- **`make reembed`** (`scripts/reembed.py`) — resumable backfill that embeds articles with `embedding IS NULL`. Run after any embedding-model change (with `worker` stopped so one process holds the ~2 GB model).
+- **`scripts/check_feed.py URL [URL ...]`** — feed liveness checker (feedparser, same lib as ingest). Vet candidate RSS URLs from the VPS before adding them to `sources/feeds.opml`.
+- **`make seed`** (`scripts/seed.py`) — idempotent seed of categories + outlets. **Only inserts missing rows; does not update existing ones** (so changing an outlet's `rss_feed_url` in `seed.py` won't affect the live DB — use `feeds.opml` or a direct update).
+
+Threshold calibration loop: edit a `settings` row (`docker compose exec postgres psql -U vernier -d vernier_news -c "update settings set value=... where key='...'"`), then `make recluster` + `make analyse` — no redeploy, since thresholds are data.
+
+---
+
 ## Immediate next steps
 
-1. **bge-m3 embedding upgrade** (step 1 of `docs/clustering-fix-spec.md`) — swap the embedding model to bge-m3 (int8 ONNX), migrate `Article.embedding` to `Vector(1024)`, rebuild the HNSW index, and re-embed the corpus. Touches the live pipeline + Docker image; do on a branch and run the re-embed off-peak.
-2. **Clustering rework + recalibration** — rescore (semantic-primary), de-brittle entity overlap, recalibrate thresholds in the `settings` table, add the consolidation pass to collapse the 21k singletons.
-3. **Categorisation** then **unfreeze the digest** (per `docs/categorisation-design.md`).
-4. **Start UK Ltd incorporation** — lead time is weeks; needed before Stripe in Phase 4. Does not block the current work.
+1. **Run `make spotcheck`** — eyeball real clusters + singletons to confirm the interpretation (most singletons legitimate; the mega-clusters are the chaining problem).
+2. **Centroid matching + faithful-dormancy rebuild** — the next code chunk (fixes chaining), then calibrate thresholds via the `settings` table against `make recluster` / `make analyse`.
+3. **Unfreeze the digest** with a "Top stories" group — quick now that summaries are cached; gives the first real on-screen content and makes the cluster detail view reachable.
+4. **Categorisation** (`docs/categorisation-design.md`).
+5. **Start UK Ltd incorporation** — weeks of lead time; needed before Stripe in Phase 4. Does not block current work.
 
 ---
 
 ## Outstanding issues
 
-### Active — pipeline rework (blocking the digest)
+### Active — clustering quality + the frozen digest
 
-- **Digest is empty — now down to one cause.** The precompute cache is healthy again (`/health` shows ~21.9k `cluster summaries cached`). The earlier "cached: 0" was **not** a precompute failure — it coincided with the reboot that left worker/beat down (the restart-policy bug), so the hourly jobs simply weren't running. With restart policies in place they populate fine. The one remaining blocker is that the digest groups by category via an inner join while all articles are uncategorised — the **"Top stories" fallback** (category-independent group) now unblocks it and is quick, since summaries are cached.
-- **Clustering over-fragmentation.** ~22.3k clusters from ~37.7k articles (~1.69/cluster) — 79.7% singletons. Root cause: exact-string entity-Jaccard at 0.4 weight drags related articles below the 0.45 join threshold. bge-m3 is now deployed (helps), but the **scoring is still MiniLM-era**; next is rescore (semantic-primary) + recalibrated thresholds + a full re-cluster. Fix plan: `docs/clustering-fix-spec.md`.
-- **Categorisation gap.** Ollama never ran on the VPS. Being **replaced** (not deferred) by embedding-driven categorisation: `docs/categorisation-design.md`.
+- **Digest is empty — one cause left.** The precompute cache is healthy (`/health` shows ~21k `cluster summaries cached`). The earlier "cached: 0" was a symptom of worker/beat being **down after a reboot** (the restart-policy bug), not a precompute failure. The only remaining blocker: the digest groups by category via an inner join while every article is uncategorised. The **"Top stories" fallback** (a category-independent group) unblocks it, and it's quick now that summaries are cached.
 
-### Corpus audit — findings (25 July 2026)
+- **Clustering — what is and isn't broken (important, easy to misread).** ~21.6k clusters from ~38k articles, ~84% singletons. The bge-m3 upgrade and the semantic-primary rescore are deployed but did **not** reduce fragmentation — and that turned out to be the right outcome, because:
+  - **Most singletons are legitimate.** `§6b` of `make analyse` **falsified** the "short bodies cause singletons" hypothesis (short-body 46% singleton, full-body 48% — no correlation). Singletons track **coverage overlap**: wire/breaking outlets cluster (AP 18%, France 24 20%, Al Jazeera 29% singleton); investigative/niche/foreign outlets don't (ProPublica 89%, Der Spiegel 87%, Vice 94%) because their stories are genuinely one-of-a-kind here. **Do not chase the singleton count down; do not build scraping to fix it.**
+  - **The real problems, both small:** (a) **single-linkage chaining** — an article is matched to a cluster by its *nearest single member*, which chains unrelated articles into loose mega-clusters (the 11+ bucket holds ~10k articles at near-random intra-cluster similarity). Fix = centroid matching. (b) **Under-grouping** — `§8` of `make analyse` shows only ~6% of articles have a ≥0.80 neighbour in a different cluster (14% at ≥0.75); the true "should have merged" rate, addressable by threshold calibration.
+  - **Harness caveat:** `scripts/recluster.py` skips dormancy during replay (all clusters stay active), so it over-chains vs live. Making it honour dormancy is part of the centroid chunk.
 
-Full read-only audit via `scripts/analyse_corpus.py` (`make analyse`). Snapshot at ~37.7k articles:
+- **Categorisation gap.** Ollama never ran on the VPS; every article is uncategorised. Being **replaced** (not deferred) by embedding-driven categorisation once clustering settles: `docs/categorisation-design.md`.
 
-- **Political skew — mission-level constraint.** Article-weighted spectrum was **~54% centre-left, ~45% centre, ~1% centre-right, 0% far-left, 0% far-right**. The SpreadBar and the future RAS "political centroid" anti-bias mechanism are only as agnostic as this distribution — a skewed corpus makes the "neutral" pick systematically centre-left. Partly addressed by adding Fox/Telegraph/Economist feeds (25 Jul); still no genuinely far-left or far-right sources (the library tops out at ±0.55) — a deliberate **curation gap** to close.
-- **Language.** Was **100% English**; native-language feeds (Le Monde FR, El País ES, Der Spiegel DE) added 25 Jul, so es/de/fr now flow. bge-m3's multilingual value is only now starting to be exercised.
-- **Source concentration.** The Guardian alone was ~36% of the corpus; top 7 outlets ~95%. High-volume right-of-centre and non-English feeds added to rebalance the *incoming* mix (the back-catalogue still skews the cumulative view).
-- **Short bodies — quality cap.** `no body` is 0, but **~48% of articles have a body < 200 chars** (RSS summary only, not full text). For those, the embedding is title-dominated, which caps clustering *and* categorisation quality more than any threshold will. Which sources are short (inherent, e.g. NYT abstracts) vs fixable (full text available) is not yet broken down. Full-text enrichment (Layer 4) is the eventual fix.
-- **Similarity distributions (bge-m3), stable across two runs:** random pairs p95 ≈ 0.45, same-cluster pairs p5 ≈ 0.57 / p50 ≈ 0.72, nearest-neighbour p50 ≈ 0.77. Clean noise/signal gap ~0.45–0.57 — the join threshold lives there.
-- **Wire-tier risk.** Thresholds are MiniLM-era; the tier-2 band (0.70–0.88) now catches the bge-m3 nearest-neighbour median (~0.77), so a large share of articles will be mislabelled "probable wire" (0.25 of a source), silently gutting `independent_source_count`. Must be recalibrated alongside clustering.
+### Corpus audit — findings (26 July 2026)
+
+Read-only audit via `scripts/analyse_corpus.py` (`make analyse`), at ~38k articles:
+
+- **Political skew — a mission-level constraint.** Article-weighted spectrum: **~53% centre-left, ~45% centre, ~1% centre-right, 0% far-left, 0% far-right.** The SpreadBar and the future RAS "political centroid" anti-bias mechanism are only as agnostic as this distribution. Partly mitigated by adding Fox/Telegraph/Economist feeds; still **no genuinely far-left or far-right sources** (the library tops out at ±0.55) — a deliberate curation gap to close.
+- **Language.** Was 100% English; native-language feeds (Le Monde FR, El País ES, Der Spiegel DE) now flow (~1% non-English and rising).
+- **Source concentration.** The Guardian is ~35% of the corpus; top 7 outlets ~95%. New feeds rebalance the *incoming* mix; the back-catalogue still skews cumulative views.
+- **Short bodies — a real fact, but NOT the clustering driver.** ~48% of articles have a body < 200 chars (RSS summary only); `§3c` of `make analyse` breaks it down by source. Per the falsification above it does **not** drive singletons; it may still cap *categorisation* depth, which is why full-text enrichment stays on the Phase 4 roadmap.
+- **Similarity distributions (bge-m3):** random pairs p95 ≈ 0.45; nearest-neighbour p50 ≈ 0.75. Clean noise/signal separation; the join threshold lives ~0.68–0.78.
+- **Wire-tier risk (addressed).** The MiniLM-era tier-2 band (0.70–0.88) caught bge-m3's same-story similarity, mislabelling independent reporting as wire. Raised to 0.90–0.95 in migration 0008. Existing articles keep their old `wire_tier` until a wire-recompute backfill (deferred; `wire_tier` is set at ingest, not recomputed by `recluster.py`).
 - **Index health.** The HNSW index (migration 0007) is confirmed in use for KNN.
 
 ### Defer to Phase 3 — already planned
@@ -584,7 +628,9 @@ These are settled — not open questions:
 - **Wire propagation:** Four-tier detection system. Phase 1 logs tiers only — collapsing activates in Phase 3 after empirical calibration. Thresholds live in the `settings` table (`app/pipeline/tuning.py`).
 - **Pipeline tuning:** clustering, dedup, and wire-tier thresholds live in the `settings` table, loaded via `app/pipeline/tuning.py` with code defaults as fallback. Enables calibration without redeploys.
 - **Embeddings:** **bge-m3** (multilingual, 1024-dim), deployed 24 Jul (migration 0007, corpus re-embedded). fp32 measured ~2.05GB resident — int8 quantisation was planned but dropped as unnecessary. Model lives in `app/pipeline/embedding.py`; the dimension is a code constant (`app/config.py`) because it defines the pgvector column width. Shared substrate for dedup, clustering, and categorisation. See `docs/clustering-fix-spec.md`.
-- **Clustering score:** originally 0.6 × cosine + 0.4 × Jaccard, threshold 0.45 — **being reworked** to semantic-primary with entity overlap as a booster (the exact-Jaccard term caused over-fragmentation). Entity cache stored as JSONB on `Cluster`. See `docs/clustering-fix-spec.md`.
+- **Clustering score:** **semantic-primary** (deployed, migration 0008). Join if nearest-member similarity ≥ `join_semantic_high` (0.78), or ≥ `join_semantic_mid` (0.68) with entity-overlap-coefficient ≥ `join_entity_min` (0.30). Replaced the MiniLM-era 0.6·cosine + 0.4·Jaccard/0.45 model. Entity cache is JSONB on `Cluster`. Known limitation: single-linkage chaining → next fix is centroid matching. NB: `docs/clustering-fix-spec.md` is **partly superseded** — its "short bodies" premise was falsified and its separate consolidation-pass idea was folded into a full rebuild (`scripts/recluster.py`).
+- **Singletons are largely legitimate, not a bug.** ~84% of clusters are single-article; the body-length hypothesis was falsified (`§6b` of `make analyse`). Judge clustering by cluster *coherence* and under-grouping rate, not by driving the singleton count down.
+- **Full-text scraping (Layer 4):** stays at its Phase 4 slot. Investigated as a clustering fix and rejected (body length does not drive singletons). Still on the roadmap for categorisation depth and provenance.
 - **Categorisation:** **superseded.** No on-box 7B Ollama. Two-layer, embedding-driven, low-bias: a small curated set of broad categories (assigned to clusters by centroid similarity) + a fully-emergent topic hierarchy (BERTopic-style over cluster centroids), with a **small local LLM (Qwen2.5-1.5B, Apache-2.0) for topic labelling only** — free to run, no per-call cost. Categorise at the **cluster** level. Broad-category list finalised after the topic tree is built. See `docs/categorisation-design.md`.
 - **Free tier article selection:** Representative Article Score (RAS) — 6 dimensions including political centroid proximity to prevent systematic bias.
 - **Social platforms:** Bluesky + Mastodon in Phase 4. LinkedIn + X/Twitter deferred to Phase 5/6.

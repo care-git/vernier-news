@@ -1,12 +1,25 @@
 # Spec — Clustering Fix
 
-*Status: draft for review*
+*Status: PARTLY SUPERSEDED (26 July 2026) — see the amendment below before acting on this.*
 
-Clustering is over-fragmenting: **21,329 active clusters from 35,931 articles (~1.7
-articles/cluster)** — mostly singletons. This defeats the platform's core value unit
-(multiple independent perspectives grouped per story) and makes precompute
-needlessly heavy. This spec fixes it. It must land **before** categorisation, which
-is built on top of clusters.
+> **Amendments after implementation + a corpus audit.** Most of this spec shipped
+> (bge-m3 embeddings, semantic-primary rescore, calibratable `settings` thresholds,
+> the `recluster.py` rebuild which subsumed the separate "consolidation pass"). But
+> two premises here were **wrong**, corrected by evidence — HANDOFF.md is the source
+> of truth:
+> - **"Short bodies cap clustering / full-text is the fix" — FALSIFIED.** A
+>   diagnostic (`§6b` of `make analyse`) showed short-body and full-body articles
+>   have the *same* singleton rate. Singletons are driven by coverage overlap
+>   (investigative/niche/foreign stories are legitimately one-of-a-kind), not body
+>   length. Full-text scraping is **not** a clustering fix and is deferred to Phase 4.
+> - **"~84% singletons = broken" — MOSTLY NOT.** Much of it is legitimate for a
+>   small, investigative-heavy corpus. The genuinely-broken parts are smaller:
+>   **single-linkage chaining** (loose mega-clusters — next fix is **centroid
+>   matching**, not in this spec) and ~6–14% under-grouping (threshold calibration).
+
+Clustering was over-fragmenting: **~21k clusters from ~38k articles** — mostly
+singletons. The original framing below treated this as a single bug to fix before
+categorisation; read it together with the amendment above.
 
 ## Diagnosis (from the current code)
 
