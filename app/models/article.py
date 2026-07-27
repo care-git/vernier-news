@@ -1,7 +1,16 @@
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.config import EMBEDDING_DIM
@@ -36,3 +45,28 @@ class Article(Base):
     cluster_memberships: Mapped[list["ArticleCluster"]] = relationship(  # noqa: F821
         back_populates="article"
     )
+    sightings: Mapped[list["ArticleSighting"]] = relationship(back_populates="article")
+
+
+class ArticleSighting(Base):
+    """Every URL form and collection path one article arrived under.
+
+    The Article row keeps whichever form was seen first; the rest would otherwise be
+    discarded. How a story propagates across paths and collection methods is research
+    data in its own right — see migration 0010 and docs/data-model.md.
+    """
+
+    __tablename__ = "article_sightings"
+    __table_args__ = (
+        UniqueConstraint("article_id", "url", name="uq_article_sightings_article_url"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id"), nullable=False, index=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    collection_source: Mapped[str | None] = mapped_column(Text)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    article: Mapped["Article"] = relationship(back_populates="sightings")
