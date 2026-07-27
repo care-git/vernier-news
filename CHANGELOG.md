@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.23.0 (2026-07-27)
+
+### Features
+
+- **ingestion**: Canonicalise URLs and collapse title whitespace
+  ([`8f84939`](https://github.com/care-git/vernier-news/commit/8f849393fd32d7df7b6a0cc752bf7de3f1f6afb7))
+
+- **pipeline**: Drop duplicate URL forms and classify repeated headlines
+  ([`bd44df1`](https://github.com/care-git/vernier-news/commit/bd44df1a3acea43e6dde5f3e1819ac76b1ce448a))
+
+- **scripts**: Classify repeats by URL path in the backfill
+  ([`f98f939`](https://github.com/care-git/vernier-news/commit/f98f9393214c0c9c2266305a3603165bcae1c79b))
+
+
 ## v0.22.0 (2026-07-26)
 
 ### Bug Fixes
