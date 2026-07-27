@@ -4,9 +4,10 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.article import Article
+from app.models.article import Article, ArticleSighting
 from app.models.outlet import Outlet
 from app.pipeline import tuning
 from app.pipeline.embedding import embedding_text, generate_embedding
@@ -27,12 +28,15 @@ logger = logging.getLogger(__name__)
 # since grouping months of instalments under one headline is not a story.
 CONTENT_TYPE_RECURRING = "recurring"
 # The same page reaching us twice under URL forms too different for the URL and
-# embedding checks below to catch. Not written by the live pipeline, which now drops
-# these before they are persisted; it exists to label the pre-existing backlog.
+# embedding checks below to catch. The live pipeline never stores a second Article row
+# for these — it files the URL form as a sighting against the one already held — so
+# this value only ever labels the backlog collected before sightings existed.
 CONTENT_TYPE_DUPLICATE = "duplicate"
 
 
-async def classify_repeat(outlet_id: int, title: str, url: str, db: AsyncSession) -> str | None:
+async def classify_repeat(
+    outlet_id: int, title: str, url: str, db: AsyncSession
+) -> tuple[str | None, int | None]:
     """Classify an incoming article against this outlet's identical past headlines.
 
     Body length cannot separate these from real coverage — roughly a third of the
@@ -40,22 +44,44 @@ async def classify_repeat(outlet_id: int, title: str, url: str, db: AsyncSession
     headline repeat from the same outlet is a reliable signal, and the URL path then
     says which kind of repeat it is.
 
-    Returns:
-        None                     — a headline this outlet has not run before
-        CONTENT_TYPE_DUPLICATE   — the same page, already stored under another URL form
-        CONTENT_TYPE_RECURRING   — the same headline on a genuinely different page
+    Returns ``(content_type, duplicate_of)``:
+        (None, None)                    — a headline this outlet has not run before
+        (CONTENT_TYPE_DUPLICATE, id)    — the same page already stored under another
+                                          URL form; ``id`` is the article to record
+                                          this URL form against
+        (CONTENT_TYPE_RECURRING, None)  — the same headline on a genuinely different page
     """
     result = await db.execute(
-        select(Article.url).where(Article.outlet_id == outlet_id).where(Article.title == title)
+        select(Article.id, Article.url)
+        .where(Article.outlet_id == outlet_id)
+        .where(Article.title == title)
     )
-    existing = result.scalars().all()
+    existing = result.all()
     if not existing:
-        return None
+        return None, None
 
     path = canonical_path(url)
-    if any(canonical_path(seen) == path for seen in existing):
-        return CONTENT_TYPE_DUPLICATE
-    return CONTENT_TYPE_RECURRING
+    for article_id, seen_url in existing:
+        if canonical_path(seen_url) == path:
+            return CONTENT_TYPE_DUPLICATE, article_id
+    return CONTENT_TYPE_RECURRING, None
+
+
+async def record_sighting(
+    article_id: int, url: str, collection_source: str | None, db: AsyncSession
+) -> None:
+    """Record that this article was observed at this URL, via this collection path.
+
+    Idempotent per (article_id, url), so a feed re-listing an unchanged URL adds
+    nothing. Deliberately not called from is_duplicate()'s near-identical-embedding
+    branch: that match can span outlets, which is wire syndication rather than another
+    URL form of the same article, and conflating the two would corrupt both.
+    """
+    await db.execute(
+        pg_insert(ArticleSighting)
+        .values(article_id=article_id, url=url, collection_source=collection_source)
+        .on_conflict_do_nothing(index_elements=["article_id", "url"])
+    )
 
 
 async def is_duplicate(url: str, embedding: list[float], db: AsyncSession) -> bool:
@@ -156,20 +182,26 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
     """Run the full dedup pipeline and persist the article if it is not a duplicate.
 
     Flow:
-        1. Classify against this outlet's identical past headlines (returns None if the
-           same page is already stored under a different URL form)
+        1. Classify against this outlet's identical past headlines. If the same page is
+           already stored under a different URL form, record the form as a sighting
+           against it and return None — no second Article row.
         2. Generate embedding from title + body excerpt
         3. Check for exact URL duplicate or near-identical content (returns None if found)
         4. Compute and log wire tier (Phase 1: log only, no collapsing)
         5. Write Article record to the database, flagging recurring formats so the
-           caller can skip story clustering
+           caller can skip story clustering, and record its own URL as a sighting
 
     Returns the saved Article ORM object, or None if the article was a duplicate.
     """
     # First, because it is a cheap indexed lookup that can spare us an embedding.
-    content_type = await classify_repeat(article.outlet_id, article.title, article.url, db)
+    content_type, duplicate_of = await classify_repeat(
+        article.outlet_id, article.title, article.url, db
+    )
     if content_type == CONTENT_TYPE_DUPLICATE:
-        logger.debug("duplicate URL form skipped: %s", article.url)
+        await record_sighting(duplicate_of, article.url, article.collection_source, db)
+        logger.debug(
+            "duplicate URL form recorded against article %d: %s", duplicate_of, article.url
+        )
         return None
     if content_type == CONTENT_TYPE_RECURRING:
         logger.info("recurring format (not clustered): %s — %s", article.title, article.url)
@@ -200,4 +232,5 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
     )
     db.add(db_article)
     await db.flush()  # get the id without committing
+    await record_sighting(db_article.id, article.url, article.collection_source, db)
     return db_article

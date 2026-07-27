@@ -1,11 +1,12 @@
 from sqlalchemy import select
 
-from app.models.article import Article
+from app.models.article import Article, ArticleSighting
 from app.models.outlet import Outlet
 from app.pipeline.dedup import (
     CONTENT_TYPE_DUPLICATE,
     CONTENT_TYPE_RECURRING,
     classify_repeat,
+    record_sighting,
 )
 from app.pipeline.ingestion.normalise import canonical_path, normalise
 
@@ -17,9 +18,11 @@ async def _outlet(db, domain: str) -> Outlet:
     return outlet
 
 
-async def _article(db, outlet: Outlet, title: str, url: str) -> None:
-    db.add(Article(url=url, outlet_id=outlet.id, title=title))
+async def _article(db, outlet: Outlet, title: str, url: str) -> Article:
+    article = Article(url=url, outlet_id=outlet.id, title=title)
+    db.add(article)
     await db.flush()
+    return article
 
 
 def test_canonical_path_drops_host_and_query():
@@ -54,24 +57,29 @@ def test_normalise_collapses_internal_title_whitespace():
 async def test_unseen_headline_is_not_a_repeat(db):
     outlet = await _outlet(db, "new-title.example")
 
-    assert await classify_repeat(outlet.id, "A story not run before", "/a", db) is None
+    assert await classify_repeat(outlet.id, "A story not run before", "/a", db) == (None, None)
 
 
 async def test_same_headline_and_path_is_a_duplicate(db):
-    """Same page, different URL form — the bbc.com / bbc.co.uk case."""
+    """Same page, different URL form — the bbc.com / bbc.co.uk case.
+
+    The returned id matters as much as the verdict: it is the article the discarded
+    URL form gets recorded against.
+    """
     outlet = await _outlet(db, "duplicate.example")
-    await _article(
+    original = await _article(
         db,
         outlet,
         "Nasa names next astronauts",
         "https://www.bbc.com/news/articles/abc123?at_medium=RSS",
     )
 
-    verdict = await classify_repeat(
+    verdict, duplicate_of = await classify_repeat(
         outlet.id, "Nasa names next astronauts", "https://www.bbc.co.uk/news/articles/abc123", db
     )
 
     assert verdict == CONTENT_TYPE_DUPLICATE
+    assert duplicate_of == original.id
 
 
 async def test_same_headline_on_a_different_page_is_recurring(db):
@@ -84,7 +92,7 @@ async def test_same_headline_on_a_different_page_is_recurring(db):
         "https://recurring.example/2026/jul/01/corrections",
     )
 
-    verdict = await classify_repeat(
+    verdict, duplicate_of = await classify_repeat(
         outlet.id,
         "Corrections and clarifications",
         "https://recurring.example/2026/jul/02/corrections",
@@ -92,6 +100,7 @@ async def test_same_headline_on_a_different_page_is_recurring(db):
     )
 
     assert verdict == CONTENT_TYPE_RECURRING
+    assert duplicate_of is None
 
 
 async def test_same_headline_from_a_different_outlet_is_not_a_repeat(db):
@@ -104,7 +113,44 @@ async def test_same_headline_from_a_different_outlet_is_not_a_repeat(db):
         second.id, "Meteor explodes over Massachusetts", "https://second.example/1", db
     )
 
-    assert verdict is None
+    assert verdict == (None, None)
+
+
+async def test_record_sighting_is_idempotent_per_url(db):
+    """A feed re-listing an unchanged URL must not accumulate rows."""
+    outlet = await _outlet(db, "sighting.example")
+    article = await _article(db, outlet, "A story", "https://sighting.example/a")
+
+    await record_sighting(article.id, "https://sighting.example/a", "rss:feed", db)
+    await record_sighting(article.id, "https://sighting.example/a", "rss:feed", db)
+    await db.flush()
+
+    rows = (
+        (await db.execute(select(ArticleSighting).where(ArticleSighting.article_id == article.id)))
+        .scalars()
+        .all()
+    )
+
+    assert len(rows) == 1
+
+
+async def test_sightings_accumulate_url_forms_against_one_article(db):
+    """The point of the table: every form an article arrived under, in one query."""
+    outlet = await _outlet(db, "forms.example")
+    article = await _article(db, outlet, "A story", "https://www.forms.example/news/a")
+
+    await record_sighting(article.id, "https://www.forms.example/news/a", "rss:feed", db)
+    await record_sighting(article.id, "https://forms.example/news/a?utm_source=x", "api:gnews", db)
+    await db.flush()
+
+    rows = (
+        (await db.execute(select(ArticleSighting).where(ArticleSighting.article_id == article.id)))
+        .scalars()
+        .all()
+    )
+
+    assert len(rows) == 2
+    assert {r.collection_source for r in rows} == {"rss:feed", "api:gnews"}
 
 
 async def test_content_type_defaults_to_none(db):
