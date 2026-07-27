@@ -1,4 +1,4 @@
-.PHONY: up down build test lint format migrate seed reembed analyse recluster spotcheck mark-repeats logs shell
+.PHONY: up down build test lint format migrate seed reembed analyse recluster spotcheck mark-repeats backfill-sightings logs shell
 
 up:
 	docker compose up -d
@@ -43,6 +43,9 @@ spotcheck:
 
 mark-repeats:
 	docker compose exec api python -m scripts.mark_repeats
+
+backfill-sightings:
+	docker compose exec api python -m scripts.backfill_sightings
 
 logs:
 	docker compose logs -f api
