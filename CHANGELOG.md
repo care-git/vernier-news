@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.24.0 (2026-07-27)
+
+### Documentation
+
+- Define the data model and capture policy
+  ([`faf3ebf`](https://github.com/care-git/vernier-news/commit/faf3ebf222f393c83964b8b0373464992a1d9081))
+
+### Features
+
+- **db**: Add article_sightings for URL forms and collection paths
+  ([`c982a82`](https://github.com/care-git/vernier-news/commit/c982a82eb717ef313b5665733c850d7518cce545))
+
+- **pipeline**: Record every URL form instead of discarding duplicates
+  ([`1c9e15c`](https://github.com/care-git/vernier-news/commit/1c9e15cc8dabb212d7beb14e4e1454c7bc6aace2))
+
+- **scripts**: Add sightings backfill for the existing corpus
+  ([`e52c223`](https://github.com/care-git/vernier-news/commit/e52c223d82c9b5122a5a9dd9bbed15bf7d46a9af))
+
+
 ## v0.23.0 (2026-07-27)
 
 ### Features
