@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 from langdetect import LangDetectException, detect
@@ -21,6 +22,22 @@ class NormalisedArticle:
     collection_source: str
     raw_html: str = ""
     extra: dict = field(default_factory=dict)
+
+
+def canonical_path(url: str) -> str:
+    """Return an outlet-relative identity for a URL: path only, lowercased, no query.
+
+    One article reaches us under several URL forms. BBC RSS links to bbc.com with
+    campaign parameters (`?at_medium=RSS&at_campaign=rss`) while GNews returns the
+    bare bbc.co.uk link; the NYT API varies the query string between sections. Host
+    and query are therefore both dropped — the path is the article's identity.
+
+    Dropping the host is safe because every comparison is scoped to one outlet, so
+    two outlets' articles can never collide. Dropping the query would be unsafe on a
+    site that identifies articles by query parameter, which is why callers pair this
+    with an exact title match rather than trusting the path alone.
+    """
+    return urlparse(url).path.rstrip("/").lower()
 
 
 def _strip_html(html: str) -> str:
@@ -53,7 +70,9 @@ def normalise(raw: dict, outlet_id: int, collection_source: str) -> NormalisedAr
     Returns None if the raw item lacks the minimum required fields (url, title).
     """
     url = (raw.get("link") or raw.get("url") or "").strip()
-    title = (raw.get("title") or "").strip()
+    # Collapse internal whitespace, not just the ends: feeds vary the spacing inside a
+    # headline, and repeat detection matches titles exactly.
+    title = " ".join((raw.get("title") or "").split())
 
     if not url or not title:
         return None

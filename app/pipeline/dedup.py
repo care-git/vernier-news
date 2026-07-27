@@ -10,35 +10,52 @@ from app.models.article import Article
 from app.models.outlet import Outlet
 from app.pipeline import tuning
 from app.pipeline.embedding import embedding_text, generate_embedding
-from app.pipeline.ingestion.normalise import NormalisedArticle
+from app.pipeline.ingestion.normalise import NormalisedArticle, canonical_path
 
 logger = logging.getLogger(__name__)
 
 # Wire tier + dedup thresholds now live in the `settings` table — see
 # app/pipeline/tuning.py. The embedding model lives in app/pipeline/embedding.py.
 
-# Marks an article whose exact headline this outlet has published before: a recurring
-# format rather than a one-off story. Kept, but never story-clustered — see the
-# Article.content_type column (migration 0009).
+# Article.content_type values (migration 0009). NULL means a normal one-off story —
+# the only kind that gets story-clustered.
+#
+# A recurring format reuses one headline indefinitely on a *new* page each time: the
+# Guardian's daily corrections column, World Cup fixture listings, live-briefing
+# stubs, radio-programme entries. Kept — the corrections column feeds the
+# correction-record dimension of the feature analysis system — but not clustered,
+# since grouping months of instalments under one headline is not a story.
 CONTENT_TYPE_RECURRING = "recurring"
+# The same page reaching us twice under URL forms too different for the URL and
+# embedding checks below to catch. Not written by the live pipeline, which now drops
+# these before they are persisted; it exists to label the pre-existing backlog.
+CONTENT_TYPE_DUPLICATE = "duplicate"
 
 
-async def detect_recurring(outlet_id: int, title: str, db: AsyncSession) -> bool:
-    """Return True if this outlet has already published an article under this title.
+async def classify_repeat(outlet_id: int, title: str, url: str, db: AsyncSession) -> str | None:
+    """Classify an incoming article against this outlet's identical past headlines.
 
-    Recurring formats — the Guardian's daily corrections column, fixture listings,
-    live-briefing stubs, radio-programme entries — reuse one headline indefinitely.
-    They cannot be told apart from real coverage by body length (roughly a third of
-    the corpus is summary-only, including outlets that cluster well), but an exact
-    repeat of a headline from the same outlet is a reliable signal.
+    Body length cannot separate these from real coverage — roughly a third of the
+    corpus is summary-only, including outlets that cluster well — but an exact
+    headline repeat from the same outlet is a reliable signal, and the URL path then
+    says which kind of repeat it is.
+
+    Returns:
+        None                     — a headline this outlet has not run before
+        CONTENT_TYPE_DUPLICATE   — the same page, already stored under another URL form
+        CONTENT_TYPE_RECURRING   — the same headline on a genuinely different page
     """
     result = await db.execute(
-        select(Article.id)
-        .where(Article.outlet_id == outlet_id)
-        .where(Article.title == title)
-        .limit(1)
+        select(Article.url).where(Article.outlet_id == outlet_id).where(Article.title == title)
     )
-    return result.scalar_one_or_none() is not None
+    existing = result.scalars().all()
+    if not existing:
+        return None
+
+    path = canonical_path(url)
+    if any(canonical_path(seen) == path for seen in existing):
+        return CONTENT_TYPE_DUPLICATE
+    return CONTENT_TYPE_RECURRING
 
 
 async def is_duplicate(url: str, embedding: list[float], db: AsyncSession) -> bool:
@@ -139,14 +156,24 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
     """Run the full dedup pipeline and persist the article if it is not a duplicate.
 
     Flow:
-        1. Generate embedding from title + body excerpt
-        2. Check for exact URL duplicate or near-identical content (returns None if found)
-        3. Compute and log wire tier (Phase 1: log only, no collapsing)
-        4. Flag recurring formats so the caller can skip story clustering
-        5. Write Article record to the database
+        1. Classify against this outlet's identical past headlines (returns None if the
+           same page is already stored under a different URL form)
+        2. Generate embedding from title + body excerpt
+        3. Check for exact URL duplicate or near-identical content (returns None if found)
+        4. Compute and log wire tier (Phase 1: log only, no collapsing)
+        5. Write Article record to the database, flagging recurring formats so the
+           caller can skip story clustering
 
     Returns the saved Article ORM object, or None if the article was a duplicate.
     """
+    # First, because it is a cheap indexed lookup that can spare us an embedding.
+    content_type = await classify_repeat(article.outlet_id, article.title, article.url, db)
+    if content_type == CONTENT_TYPE_DUPLICATE:
+        logger.debug("duplicate URL form skipped: %s", article.url)
+        return None
+    if content_type == CONTENT_TYPE_RECURRING:
+        logger.info("recurring format (not clustered): %s — %s", article.title, article.url)
+
     embedding = generate_embedding(embedding_text(article.title, article.body))
 
     if await is_duplicate(article.url, embedding, db):
@@ -154,11 +181,6 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
         return None
 
     tier, similarity = await get_wire_tier(article, embedding, db)
-
-    content_type = None
-    if await detect_recurring(article.outlet_id, article.title, db):
-        content_type = CONTENT_TYPE_RECURRING
-        logger.info("recurring format (not clustered): %s — %s", article.title, article.url)
 
     db_article = Article(
         url=article.url,
