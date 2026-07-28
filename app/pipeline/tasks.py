@@ -17,7 +17,7 @@ from app.pipeline.categorise import categorise_article
 from app.pipeline.clustering import assign_cluster, extract_entities, update_cluster_metadata
 from app.pipeline.dedup import persist_article
 from app.pipeline.ingestion.connectors import currents, gdelt, gnews, guardian, hackernews, nyt
-from app.pipeline.ingestion.rss import ingest_feed, ingest_opml
+from app.pipeline.ingestion.rss import ingest_feed, ingest_opml, parse_opml
 from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
@@ -34,21 +34,24 @@ def ingest_feeds() -> dict:
         async with SessionLocal() as db:
             await tuning.refresh(db)
 
-            # Build outlet_map {domain: id} for OPML domain resolution.
+            # Collect articles from OPML feeds, creating outlets for unknown domains.
+            articles = await ingest_opml(_OPML_PATH, db)
+
+            # Also fetch outlets carrying an rss_feed_url that the OPML does not cover.
+            # The OPML domain set has to come from the file itself: deriving it from
+            # the outlets table made the condition below always false, so this loop
+            # silently never ran.
+            opml_domains = {feed["domain"] for feed in parse_opml(_OPML_PATH)}
             outlet_rows = await db.execute(
                 select(Outlet.domain, Outlet.id, Outlet.rss_feed_url).where(Outlet.active.is_(True))
             )
             all_outlets = outlet_rows.all()
-            outlet_map = {r.domain: r.id for r in all_outlets}
-
-            # Collect articles from OPML feeds.
-            articles = ingest_opml(_OPML_PATH, outlet_map)
-
-            # Also fetch outlets with rss_feed_url set that aren't covered by the OPML.
-            opml_domains = {d for d, _ in outlet_map.items()}
             for outlet in all_outlets:
                 if outlet.rss_feed_url and outlet.domain not in opml_domains:
                     articles.extend(ingest_feed(outlet.rss_feed_url, outlet.id))
+
+            # Guardian and NYT are single-outlet connectors keyed on a seeded domain.
+            outlet_map = {r.domain: r.id for r in all_outlets}
 
             # API connectors — each skipped gracefully if key is absent.
             if settings.guardian_api_key:
@@ -61,18 +64,17 @@ def ingest_feeds() -> dict:
                 if nyt_id:
                     articles.extend(await nyt.fetch(nyt_id, settings.nyt_api_key))
 
+            # The aggregators span many publications, so they resolve outlets
+            # themselves and create records for domains never seen before.
             if settings.gnews_api_key:
-                articles.extend(await gnews.fetch(outlet_map, settings.gnews_api_key))
+                articles.extend(await gnews.fetch(db, settings.gnews_api_key))
 
             if settings.currents_api_key:
-                articles.extend(await currents.fetch(outlet_map, settings.currents_api_key))
+                articles.extend(await currents.fetch(db, settings.currents_api_key))
 
-            # GDELT and HN require no API key. GDELT resolves outlets itself, creating
-            # records for domains it has never seen — it indexes hundreds of thousands
-            # of sources and filtering it to the seeded list discarded the whole point
-            # of having it. The remaining connectors still take outlet_map and follow.
+            # GDELT and HN require no API key.
             articles.extend(await gdelt.fetch(db, settings.gdelt_query))
-            articles.extend(await hackernews.fetch(outlet_map))
+            articles.extend(await hackernews.fetch(db))
 
             saved = 0
             for article in articles:

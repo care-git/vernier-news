@@ -2,19 +2,14 @@ from __future__ import annotations
 
 import logging
 import xml.etree.ElementTree as ET
-from urllib.parse import urlparse
 
 import feedparser
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pipeline.ingestion.normalise import NormalisedArticle, normalise
+from app.pipeline.ingestion.normalise import NormalisedArticle, domain_from_url, normalise
+from app.pipeline.ingestion.outlets import resolve_outlet
 
 logger = logging.getLogger(__name__)
-
-
-def _domain_from_url(url: str) -> str:
-    """Extract bare domain (e.g. 'bbc.co.uk') from a URL."""
-    host = urlparse(url).netloc
-    return host.removeprefix("www.")
 
 
 def parse_opml(opml_path: str) -> list[dict]:
@@ -39,7 +34,7 @@ def parse_opml(opml_path: str) -> list[dict]:
         domain = outline.get("domain", "").strip()
         if not domain:
             html_url = outline.get("htmlUrl", "")
-            domain = _domain_from_url(html_url) if html_url else ""
+            domain = domain_from_url(html_url) if html_url else ""
 
         if not domain:
             logger.warning("OPML entry missing domain, skipping: %s", xml_url)
@@ -83,21 +78,21 @@ def ingest_feed(feed_url: str, outlet_id: int) -> list[NormalisedArticle]:
     return articles
 
 
-def ingest_opml(opml_path: str, outlet_map: dict[str, int]) -> list[NormalisedArticle]:
-    """Fetch all feeds in an OPML file, resolving outlet IDs via outlet_map.
+async def ingest_opml(opml_path: str, db: AsyncSession) -> list[NormalisedArticle]:
+    """Fetch every feed in an OPML file, creating outlets for domains not yet known.
 
-    outlet_map: {domain: outlet_id} — built by the caller from the outlets table.
-    Feeds whose domain is not in outlet_map are skipped with a warning.
+    Feeds used to be skipped when their domain was missing from the outlets table,
+    which made adding a source a two-step job — seed the outlet, then add the feed —
+    with silent failure if you did only the second. The OPML entry carries a display
+    name, so outlets discovered this way are better labelled than those found through
+    the aggregator APIs.
     """
-    feeds = parse_opml(opml_path)
     articles: list[NormalisedArticle] = []
 
-    for feed in feeds:
-        outlet_id = outlet_map.get(feed["domain"])
+    for feed in parse_opml(opml_path):
+        outlet_id = await resolve_outlet(feed["domain"], db, name=feed["name"])
         if outlet_id is None:
-            logger.warning(
-                "No outlet found for domain '%s', skipping feed %s", feed["domain"], feed["url"]
-            )
+            logger.warning("Could not resolve an outlet for feed %s", feed["url"])
             continue
         articles.extend(ingest_feed(feed["url"], outlet_id))
 

@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from urllib.parse import urlparse
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pipeline.ingestion.normalise import NormalisedArticle
+from app.pipeline.ingestion.normalise import NormalisedArticle, domain_from_url
+from app.pipeline.ingestion.outlets import resolve_outlet
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,15 @@ async def _fetch_item(client: httpx.AsyncClient, item_id: int) -> dict | None:
         return None
 
 
-async def fetch(outlet_map: dict[str, int]) -> list[NormalisedArticle]:
-    """Fetch top Hacker News stories and attribute each to its linked outlet.
+async def fetch(db: AsyncSession) -> list[NormalisedArticle]:
+    """Fetch top Hacker News stories and attribute each to the outlet it links to.
 
-    Stories without an external URL (Ask HN, Show HN, etc.) are skipped.
-    Stories whose domain is not in outlet_map are attributed to the HN outlet
-    (news.ycombinator.com) using the HN item URL as the canonical URL.
+    Stories with an external link are attributed to that outlet, which is created on
+    discovery if new — HN links across the whole web, so this is a genuine breadth
+    source rather than a feed for one publication. Self-posts (Ask HN, Show HN) have
+    no external URL and are attributed to HN itself, keyed on the HN item URL.
     """
-    hn_outlet_id = outlet_map.get("news.ycombinator.com")
+    hn_outlet_id = await resolve_outlet("news.ycombinator.com", db, name="Hacker News")
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         try:
@@ -65,14 +67,13 @@ async def fetch(outlet_map: dict[str, int]) -> list[NormalisedArticle]:
         published_at = datetime.fromtimestamp(item.get("time", 0), tz=UTC)
 
         if external_url:
-            domain = urlparse(external_url).netloc.removeprefix("www.")
-            outlet_id = outlet_map.get(domain)
+            outlet_id = await resolve_outlet(domain_from_url(external_url), db)
             url = external_url
         else:
             outlet_id = None
             url = hn_url
 
-        # Fall back to HN outlet for unrecognised domains or self-posts.
+        # Self-posts, and links whose domain could not be resolved, sit under HN itself.
         if outlet_id is None:
             if hn_outlet_id is None:
                 continue

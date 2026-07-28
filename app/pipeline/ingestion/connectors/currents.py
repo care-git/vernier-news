@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from urllib.parse import urlparse
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pipeline.ingestion.normalise import NormalisedArticle
+from app.pipeline.ingestion.normalise import NormalisedArticle, domain_from_url
+from app.pipeline.ingestion.outlets import resolve_outlet
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,12 @@ _BASE = "https://api.currentsapi.services/v1/latest-news"
 _TIMEOUT = 20.0
 
 
-async def fetch(outlet_map: dict[str, int], api_key: str) -> list[NormalisedArticle]:
-    """Fetch latest news from the Currents API, attributing each to its source outlet."""
+async def fetch(db: AsyncSession, api_key: str) -> list[NormalisedArticle]:
+    """Fetch latest news from the Currents API, attributing each to its source outlet.
+
+    Outlets are created on discovery rather than matched against a seeded list — see
+    app/pipeline/ingestion/outlets.py.
+    """
     params = {"apiKey": api_key, "language": "en"}
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -29,8 +34,7 @@ async def fetch(outlet_map: dict[str, int], api_key: str) -> list[NormalisedArti
     articles = []
     for item in data.get("news", []):
         url = item.get("url", "")
-        domain = urlparse(url).netloc.removeprefix("www.")
-        outlet_id = outlet_map.get(domain)
+        outlet_id = await resolve_outlet(domain_from_url(url), db)
         if outlet_id is None:
             continue
 

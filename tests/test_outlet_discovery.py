@@ -2,7 +2,22 @@ from sqlalchemy import select
 
 from app.models.outlet import Outlet
 from app.pipeline.ingestion.normalise import domain_from_url
-from app.pipeline.ingestion.outlets import resolve_outlet
+from app.pipeline.ingestion.outlets import country_code, resolve_outlet
+
+
+def test_country_code_maps_names_and_codes_alike():
+    """GDELT reports a country name; other connectors may send a code already."""
+    assert country_code("United Kingdom") == "GB"
+    assert country_code("GB") == "GB"
+    assert country_code("gbr") == "GB"
+    assert country_code("Qatar") == "QA"
+
+
+def test_country_code_returns_none_rather_than_guessing():
+    """A wrong country silently corrupts coverage distribution, which is per-region."""
+    assert country_code("Nowhereland") is None
+    assert country_code("") is None
+    assert country_code(None) is None
 
 
 def test_domain_from_url_strips_www_and_lowercases():
@@ -36,6 +51,18 @@ async def test_unknown_domain_creates_a_discovered_outlet(db):
     assert outlet.discovered_at is not None
     assert outlet.active is True
     assert outlet.wire_service is False
+
+
+async def test_discovered_outlet_records_a_mapped_country(db):
+    outlet_id = await resolve_outlet(
+        "gdelt-found.example", db, name="Found News", country="United Kingdom"
+    )
+    await db.flush()
+
+    outlet = await db.scalar(select(Outlet).where(Outlet.id == outlet_id))
+
+    assert outlet.country == "GB"
+    assert outlet.name == "Found News"
 
 
 async def test_discovered_outlet_has_no_political_leaning(db):
