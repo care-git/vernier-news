@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # Admin API key — protects /api/v1/admin/* endpoints
     admin_api_key: str | None = None
 
+    # GDELT sweep query. The DOC API requires a query and supports no wildcard, so a
+    # broad operator is needed to sweep general coverage. Kept in config rather than
+    # hardcoded because tuning it changes ingest breadth and wants trying on the box
+    # without a redeploy.
+    gdelt_query: str = "sourcelang:eng"
+
     # CORS — comma-separated origins; add http://localhost:PORT for local Flutter dev
     cors_origins: str = "https://vernier.news"
 

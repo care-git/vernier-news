@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Float, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -18,5 +20,8 @@ class Outlet(Base):
     rss_feed_url: Mapped[str | None] = mapped_column(Text)
     wire_service: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # NULL = seeded and curated with MBFC leaning data; a timestamp = created because
+    # an article from this domain arrived. See migration 0011.
+    discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     articles: Mapped[list["Article"]] = relationship(back_populates="outlet")  # noqa: F821
