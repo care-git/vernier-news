@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.26.0 (2026-07-28)
+
+### Bug Fixes
+
+- **ingestion**: Log GDELT's non-JSON responses instead of swallowing them
+  ([`0db8650`](https://github.com/care-git/vernier-news/commit/0db86503d24dd7a4a23cddb0aca76223a2ffd047))
+
+### Features
+
+- **ingestion**: Map source country names to ISO 3166 codes
+  ([`b6b3c4e`](https://github.com/care-git/vernier-news/commit/b6b3c4ef69ede3d26c678485046022f9307a82e3))
+
+- **ingestion**: Resolve outlets on discovery in every connector
+  ([`5317f48`](https://github.com/care-git/vernier-news/commit/5317f48608edfd081b118d40d50a9b92970a72fa))
+
+
 ## v0.25.0 (2026-07-28)
 
 ### Documentation
