@@ -73,9 +73,18 @@ async def fetch(
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(_BASE, params=params)
             resp.raise_for_status()
-            data = resp.json()
     except Exception as exc:
-        logger.error("GDELT API error: %s", exc)
+        logger.error("GDELT request failed: %s", exc)
+        return []
+
+    # GDELT answers a rejected query or a throttled caller with HTTP 200 and a plain
+    # text advisory, so raise_for_status() passes and only json() fails. Logging the
+    # bare exception hid the reason; log the body instead. It also asks for no more
+    # than one request every 5 seconds, which bounds any backfill built on this.
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.error("GDELT returned a non-JSON response: %s", resp.text[:300].strip())
         return []
 
     items = data.get("articles", [])
@@ -86,7 +95,9 @@ async def fetch(
         if not url or not title:
             continue
 
-        outlet_id = await resolve_outlet(domain_from_url(url), db)
+        outlet_id = await resolve_outlet(
+            domain_from_url(url), db, country=item.get("sourcecountry")
+        )
         if outlet_id is None:
             continue
 
