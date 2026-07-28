@@ -24,6 +24,11 @@ class NormalisedArticle:
     extra: dict = field(default_factory=dict)
 
 
+def domain_from_url(url: str) -> str:
+    """Extract the bare lowercased domain ('bbc.co.uk') used to identify an outlet."""
+    return urlparse(url).netloc.lower().removeprefix("www.")
+
+
 def canonical_path(url: str) -> str:
     """Return an outlet-relative identity for a URL: path only, lowercased, no query.
 
@@ -57,7 +62,7 @@ def _parse_date(entry: dict) -> datetime:
     return datetime.now(UTC)
 
 
-def _detect_language(text: str) -> str:
+def detect_language(text: str) -> str:
     try:
         return detect(text[:300])
     except LangDetectException:
@@ -87,7 +92,7 @@ def normalise(raw: dict, outlet_id: int, collection_source: str) -> NormalisedAr
     author = (raw.get("author") or "").strip() or None
     published_at = _parse_date(raw)
 
-    language = _detect_language(f"{title} {body[:200]}")
+    language = detect_language(f"{title} {body[:200]}")
 
     return NormalisedArticle(
         url=url,
