@@ -67,8 +67,11 @@ def ingest_feeds() -> dict:
             if settings.currents_api_key:
                 articles.extend(await currents.fetch(outlet_map, settings.currents_api_key))
 
-            # GDELT and HN require no API key.
-            articles.extend(await gdelt.fetch(outlet_map))
+            # GDELT and HN require no API key. GDELT resolves outlets itself, creating
+            # records for domains it has never seen — it indexes hundreds of thousands
+            # of sources and filtering it to the seeded list discarded the whole point
+            # of having it. The remaining connectors still take outlet_map and follow.
+            articles.extend(await gdelt.fetch(db, settings.gdelt_query))
             articles.extend(await hackernews.fetch(outlet_map))
 
             saved = 0
