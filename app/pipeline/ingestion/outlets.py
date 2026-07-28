@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+import pycountry
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +26,33 @@ from app.models.outlet import Outlet
 logger = logging.getLogger(__name__)
 
 
-async def resolve_outlet(domain: str, db: AsyncSession, *, name: str | None = None) -> int | None:
+def country_code(value: str | None) -> str | None:
+    """Map a country name or code to ISO 3166-1 alpha-2, or None if unrecognisable.
+
+    Sources disagree on format: GDELT reports a country *name* ("United Kingdom")
+    while ``Outlet.country`` is alpha-2, and other connectors may send a code already.
+    ``pycountry.lookup`` accepts alpha-2, alpha-3, name, official name and common
+    name, so both forms resolve without a hand-maintained table.
+
+    Unrecognised values are logged rather than guessed at — a wrong country silently
+    corrupts coverage-distribution analysis, which is per-region.
+    """
+    if not value:
+        return None
+    try:
+        return pycountry.countries.lookup(value.strip()).alpha_2
+    except LookupError:
+        logger.info("unmapped country value from a connector: %r", value)
+        return None
+
+
+async def resolve_outlet(
+    domain: str,
+    db: AsyncSession,
+    *,
+    name: str | None = None,
+    country: str | None = None,
+) -> int | None:
     """Return the outlet id for ``domain``, creating a record the first time it is seen.
 
     Returns None only when the domain is empty — an article with no resolvable source
@@ -50,6 +77,7 @@ async def resolve_outlet(domain: str, db: AsyncSession, *, name: str | None = No
         .values(
             domain=domain,
             name=name or domain,
+            country=country_code(country),
             discovered_at=datetime.now(UTC),
             wire_service=False,
             active=True,

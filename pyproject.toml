@@ -30,6 +30,10 @@ dependencies = [
     "langdetect>=1.0.9",
     "beautifulsoup4>=4.12.0",
     "lxml>=5.2.0",
+    # ISO 3166 lookup: connectors report a source country as a name, a code, or not at
+    # all, and Outlet.country is alpha-2. Discovered outlets would otherwise have no
+    # country, which coverage-distribution analysis is built on.
+    "pycountry>=24.0.0",
 ]
 
 [project.optional-dependencies]
