@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.25.0 (2026-07-28)
+
+### Documentation
+
+- Design computed political leaning across three axes
+  ([`134bd74`](https://github.com/care-git/vernier-news/commit/134bd744f5d63bfe7b77de0c3950ef89ef0fdd80))
+
+### Features
+
+- **db**: Add outlets.discovered_at to mark discovered sources
+  ([`20529c4`](https://github.com/care-git/vernier-news/commit/20529c43c3d6368f53295388634d41d03d8819e8))
+
+- **ingestion**: Create outlets on discovery instead of filtering to a seed list
+  ([`b753718`](https://github.com/care-git/vernier-news/commit/b753718e407cc69917a27727f05e84161f1feea7))
+
+- **ingestion**: Sweep GDELT without restricting it to seeded outlets
+  ([`33db842`](https://github.com/care-git/vernier-news/commit/33db842b08f2f85b14191a0f64474508ccf7ff28))
+
+
 ## v0.24.0 (2026-07-27)
 
 ### Documentation
