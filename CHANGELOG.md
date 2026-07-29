@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.27.0 (2026-07-29)
+
+### Features
+
+- **ingestion**: Sweep GDELT in time windows instead of refetching the frontier
+  ([`43ab0ab`](https://github.com/care-git/vernier-news/commit/43ab0ab95c398bd474c16b8fb5b93624c42683f2))
+
+
 ## v0.26.1 (2026-07-29)
 
 ### Bug Fixes
