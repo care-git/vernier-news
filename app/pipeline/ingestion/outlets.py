@@ -26,21 +26,34 @@ from app.models.outlet import Outlet
 logger = logging.getLogger(__name__)
 
 
+# Everyday names for countries whose ISO record is filed under a formal one, which
+# pycountry.lookup will not match. Extend from the "unmapped country value" log lines
+# rather than by guessing at what connectors might send.
+_COUNTRY_ALIASES = {
+    "turkey": "TR",  # ISO name is Türkiye
+    "russia": "RU",  # ISO name is Russian Federation
+}
+
+
 def country_code(value: str | None) -> str | None:
     """Map a country name or code to ISO 3166-1 alpha-2, or None if unrecognisable.
 
     Sources disagree on format: GDELT reports a country *name* ("United Kingdom")
     while ``Outlet.country`` is alpha-2, and other connectors may send a code already.
-    ``pycountry.lookup`` accepts alpha-2, alpha-3, name, official name and common
-    name, so both forms resolve without a hand-maintained table.
+    ``pycountry.lookup`` accepts alpha-2, alpha-3, name and official name, so both
+    forms resolve without a hand-maintained table for the common case.
 
     Unrecognised values are logged rather than guessed at — a wrong country silently
     corrupts coverage-distribution analysis, which is per-region.
     """
     if not value:
         return None
+    cleaned = value.strip()
+    alias = _COUNTRY_ALIASES.get(cleaned.lower())
+    if alias:
+        return alias
     try:
-        return pycountry.countries.lookup(value.strip()).alpha_2
+        return pycountry.countries.lookup(cleaned).alpha_2
     except LookupError:
         logger.info("unmapped country value from a connector: %r", value)
         return None
