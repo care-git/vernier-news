@@ -23,5 +23,11 @@ class Outlet(Base):
     # NULL = seeded and curated with MBFC leaning data; a timestamp = created because
     # an article from this domain arrived. See migration 0011.
     discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Groups sibling sites (timesofindia.indiatimes.com under indiatimes.com). A
+    # mechanical grouping, not ownership — see app/pipeline/ingestion/sources.py.
+    registrable_domain: Mapped[str | None] = mapped_column(String(255), index=True)
+    # What kind of publisher this is: press_release, academic, government, ngo,
+    # satire, forum, aggregator, news. NULL means unclassified, never excluded.
+    source_type: Mapped[str | None] = mapped_column(String(32))
 
     articles: Mapped[list["Article"]] = relationship(back_populates="outlet")  # noqa: F821
