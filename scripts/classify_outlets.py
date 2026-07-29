@@ -27,7 +27,7 @@ import asyncio
 import logging
 from collections import Counter
 
-from sqlalchemy import bindparam, func, select, update
+from sqlalchemy import func, select, update
 
 from app.database import SessionLocal
 from app.models.outlet import Outlet
@@ -62,13 +62,16 @@ async def _run(db) -> None:
         counts[source_type or "unclassified"] += 1
         payload.append(
             {
-                "outlet_id": outlet_id,
+                "id": outlet_id,
                 "registrable_domain": registrable_domain(domain),
                 "source_type": source_type,
             }
         )
 
-    await db.execute(update(Outlet).where(Outlet.id == bindparam("outlet_id")), payload)
+    # ORM bulk update by primary key: no explicit WHERE, because SQLAlchemy derives it
+    # from the "id" in each dict. Adding one instead makes it a criteria-based update,
+    # which cannot synchronise ORM state and raises.
+    await db.execute(update(Outlet), payload)
     await db.commit()
     logger.info("classified %d outlets", len(payload))
 
