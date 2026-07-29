@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.outlet import Outlet
+from app.pipeline.ingestion.sources import classify_source, registrable_domain
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,8 @@ async def resolve_outlet(
             domain=domain,
             name=name or domain,
             country=country_code(country),
+            registrable_domain=registrable_domain(domain),
+            source_type=classify_source(domain),
             discovered_at=datetime.now(UTC),
             wire_service=False,
             active=True,
