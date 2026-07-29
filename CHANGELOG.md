@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.28.1 (2026-07-29)
+
+### Bug Fixes
+
+- **scripts**: Use ORM bulk update by primary key in outlet classification
+  ([`6952274`](https://github.com/care-git/vernier-news/commit/695227424bc46d3c3f2832ee85006fc796fdaf62))
+
+
 ## v0.28.0 (2026-07-29)
 
 ### Features
