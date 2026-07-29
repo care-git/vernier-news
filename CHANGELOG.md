@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.26.1 (2026-07-29)
+
+### Bug Fixes
+
+- **ingestion**: Map everyday country names that ISO files formally
+  ([`9703a8e`](https://github.com/care-git/vernier-news/commit/9703a8eb23a90f9a9647d4ad1ed5b919dee1cdea))
+
+- **ingestion**: Strip the port when deriving an outlet domain
+  ([`fc5e77a`](https://github.com/care-git/vernier-news/commit/fc5e77a553df7fcfcc3992da6463c11ba87e89fa))
+
+
 ## v0.26.0 (2026-07-28)
 
 ### Bug Fixes
