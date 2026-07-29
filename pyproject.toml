@@ -34,6 +34,9 @@ dependencies = [
     # all, and Outlet.country is alpha-2. Discovered outlets would otherwise have no
     # country, which coverage-distribution analysis is built on.
     "pycountry>=24.0.0",
+    # Public suffix list: groups discovered subdomains under their registrable domain.
+    # Splitting on dots cannot do this — bbc.co.uk would reduce to co.uk.
+    "tldextract>=5.0.0",
 ]
 
 [project.optional-dependencies]
