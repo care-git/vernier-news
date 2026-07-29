@@ -25,8 +25,12 @@ class NormalisedArticle:
 
 
 def domain_from_url(url: str) -> str:
-    """Extract the bare lowercased domain ('bbc.co.uk') used to identify an outlet."""
-    return urlparse(url).netloc.lower().removeprefix("www.")
+    """Extract the bare lowercased domain ('bbc.co.uk') used to identify an outlet.
+
+    ``hostname`` rather than ``netloc``: netloc keeps the port, which created
+    'na.gov.pk:443' as an outlet distinct from 'na.gov.pk'. It also lowercases for us.
+    """
+    return (urlparse(url).hostname or "").removeprefix("www.")
 
 
 def canonical_path(url: str) -> str:

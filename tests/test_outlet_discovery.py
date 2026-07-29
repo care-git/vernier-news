@@ -13,6 +13,12 @@ def test_country_code_maps_names_and_codes_alike():
     assert country_code("Qatar") == "QA"
 
 
+def test_country_code_handles_everyday_names_iso_files_formally():
+    """GDELT sends 'Turkey' and 'Russia'; ISO files them as Türkiye and Russian Federation."""
+    assert country_code("Turkey") == "TR"
+    assert country_code("Russia") == "RU"
+
+
 def test_country_code_returns_none_rather_than_guessing():
     """A wrong country silently corrupts coverage distribution, which is per-region."""
     assert country_code("Nowhereland") is None
@@ -22,6 +28,11 @@ def test_country_code_returns_none_rather_than_guessing():
 
 def test_domain_from_url_strips_www_and_lowercases():
     assert domain_from_url("https://WWW.BBC.co.uk/news/articles/abc") == "bbc.co.uk"
+
+
+def test_domain_from_url_drops_the_port():
+    """A port in the netloc created 'na.gov.pk:443' as an outlet of its own."""
+    assert domain_from_url("https://na.gov.pk:443/uploads/doc.pdf") == "na.gov.pk"
 
 
 def test_domain_from_url_keeps_distinct_hosts_distinct():
