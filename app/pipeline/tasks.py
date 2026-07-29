@@ -4,7 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.cache.clusters import precompute_cluster_summaries
 from app.cache.digest import precompute_all_digests
@@ -72,8 +72,8 @@ def ingest_feeds() -> dict:
             if settings.currents_api_key:
                 articles.extend(await currents.fetch(db, settings.currents_api_key))
 
-            # GDELT and HN require no API key.
-            articles.extend(await gdelt.fetch(db, settings.gdelt_query))
+            # HN requires no API key. GDELT has its own task — it sweeps time windows
+            # on a much shorter cycle than the feeds can be politely polled on.
             articles.extend(await hackernews.fetch(db))
 
             saved = 0
@@ -101,6 +101,56 @@ def ingest_feeds() -> dict:
 
             await db.commit()
             logger.info("ingest_feeds: saved %d new articles", saved)
+            return {"articles_saved": saved}
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="pipeline.sweep_gdelt")
+def sweep_gdelt() -> dict:
+    """Sweep GDELT forward in time windows, persisting and clustering what it finds.
+
+    Separate from ingest_feeds because the two have opposite pacing needs: RSS feeds
+    and the quota-limited APIs want polling every 30 minutes, while GDELT is the
+    breadth source and wants sweeping as fast as its rate limit allows.
+    """
+
+    async def _run() -> dict:
+        async with SessionLocal() as db:
+            await tuning.refresh(db)
+
+            # The cursor is the corpus itself: resume from the newest article GDELT has
+            # given us. No extra state to keep in step with the data.
+            since = await db.scalar(
+                select(func.max(Article.published_at)).where(
+                    Article.collection_source == "api:gdelt"
+                )
+            )
+            articles = await gdelt.sweep(db, settings.gdelt_query, since)
+
+            saved = 0
+            for article in articles:
+                try:
+                    db_article = await persist_article(article, db)
+                    if db_article is None:
+                        continue
+                    if db_article.content_type is None:
+                        entities = extract_entities(f"{article.title} {article.body}")
+                        cluster_id = await assign_cluster(
+                            db_article.id,
+                            db_article.embedding,
+                            entities,
+                            db_article.published_at,
+                            db_article.wire_tier,
+                            db,
+                        )
+                        await update_cluster_metadata(cluster_id, db)
+                    saved += 1
+                except Exception:
+                    logger.exception("failed to process GDELT article: %s", article.url)
+
+            await db.commit()
+            logger.info("sweep_gdelt: saved %d new articles", saved)
             return {"articles_saved": saved}
 
     return asyncio.run(_run())

@@ -15,6 +15,13 @@ celery_app.conf.update(
             "task": "pipeline.ingest_feeds",
             "schedule": 1800.0,  # every 30 minutes
         },
+        # GDELT sweeps time windows rather than polling a feed, so it runs far more
+        # often than the sources that would object to being hit that hard. It idles
+        # cheaply once it reaches the indexing frontier.
+        "sweep-gdelt": {
+            "task": "pipeline.sweep_gdelt",
+            "schedule": 300.0,  # every 5 minutes
+        },
         "categorise-pending": {
             "task": "pipeline.categorise_pending",
             "schedule": 1800.0,  # every 30 minutes

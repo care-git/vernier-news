@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -22,6 +23,22 @@ _TIMEOUT = 30.0
 MAX_LOOKBACK_DAYS = 90
 
 _DATE_FORMAT = "%Y%m%d%H%M%S"
+
+# Sweep tuning. Without an explicit window the API returns the most recent
+# _MAX_RECORDS articles by date, so consecutive runs re-fetch the same slice — the
+# reason every run reported "kept 250 of 250". Walking fixed windows instead makes
+# each call return a distinct slice, which is what actually accumulates a corpus.
+#
+# A window has to be small enough that its article count fits under _MAX_RECORDS or
+# the tail is silently dropped. GDELT indexes on the order of 150k articles a day
+# across all languages, so five minutes is roughly the right order for one language.
+SWEEP_WINDOW_MINUTES = 5
+SWEEP_WINDOWS_PER_RUN = 12
+# GDELT asks for no more than one request every five seconds.
+RATE_LIMIT_SECONDS = 5.0
+# GDELT indexes an article some time after publication, so sweeping right up to the
+# present would permanently miss whatever had not landed yet. Stay behind the frontier.
+INDEX_LAG_MINUTES = 60
 
 
 def _window(start: datetime | None, end: datetime | None) -> dict[str, str]:
@@ -128,3 +145,38 @@ async def fetch(
 
     logger.info("GDELT: kept %d of %d articles returned", len(articles), len(items))
     return articles
+
+
+async def sweep(
+    db: AsyncSession,
+    query: str,
+    since: datetime | None,
+    windows: int = SWEEP_WINDOWS_PER_RUN,
+) -> list[NormalisedArticle]:
+    """Walk forward from ``since`` in fixed windows, gathering a distinct slice each call.
+
+    Returns as soon as it reaches the indexing frontier, so once the sweep has caught
+    up the task costs one short request and idles — no need to tune the schedule down
+    again later.
+
+    ``since`` is clamped into the API's three-month window; passing None starts at the
+    oldest point it will serve.
+    """
+    now = datetime.now(UTC)
+    frontier = now - timedelta(minutes=INDEX_LAG_MINUTES)
+    oldest = now - timedelta(days=MAX_LOOKBACK_DAYS)
+    cursor = max(since or oldest, oldest)
+
+    collected: list[NormalisedArticle] = []
+    for index in range(windows):
+        if cursor >= frontier:
+            logger.info("GDELT sweep: reached the indexing frontier at %s", cursor)
+            break
+        window_end = min(cursor + timedelta(minutes=SWEEP_WINDOW_MINUTES), frontier)
+        if index:
+            await asyncio.sleep(RATE_LIMIT_SECONDS)
+        collected.extend(await fetch(db, query, start=cursor, end=window_end))
+        cursor = window_end
+
+    logger.info("GDELT sweep: %d articles gathered, cursor now %s", len(collected), cursor)
+    return collected
