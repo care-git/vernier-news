@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.28.0 (2026-07-29)
+
+### Features
+
+- **db**: Add outlets.registrable_domain and outlets.source_type
+  ([`015210b`](https://github.com/care-git/vernier-news/commit/015210bd07d7dde3110b733e4501c4ca09a6c989))
+
+- **ingestion**: Derive registrable domain and source type from a domain
+  ([`265bcb5`](https://github.com/care-git/vernier-news/commit/265bcb5b6df3da8eb2f1d8e7475400f52409c728))
+
+- **scripts**: Add outlet classification backfill
+  ([`9c805e2`](https://github.com/care-git/vernier-news/commit/9c805e2ae9be977410898a7dcf28c900c1b09048))
+
+
 ## v0.27.0 (2026-07-29)
 
 ### Features
