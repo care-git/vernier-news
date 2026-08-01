@@ -27,6 +27,14 @@ class PipelineTuning:
     join_semantic_high: float = 0.78  # semantic-only join
     join_semantic_mid: float = 0.68  # join in this band only with entity corroboration
     join_entity_min: float = 0.30  # entity overlap coefficient required in the mid band
+    # Absolute number of shared entities the mid band also requires. The overlap
+    # coefficient divides by the *smaller* entity set, which is almost always the
+    # incoming article's, so a three-entity article sharing one name with a
+    # 564-member cluster scored 0.33 and joined. Because a cluster's entity cache
+    # accumulates every entity it has ever seen, that made large clusters into
+    # attractors: the more they held, the more likely any article shared something.
+    # One shared name is not corroboration.
+    join_entity_min_shared: float = 2.0
     temporal_window_hours: float = 72.0
     dormancy_hours: float = 48.0
 
