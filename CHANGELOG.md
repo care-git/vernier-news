@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.30.1 (2026-08-01)
+
+### Bug Fixes
+
+- **scripts**: Make the corpus audit readable at thousands of outlets
+  ([`e7a954b`](https://github.com/care-git/vernier-news/commit/e7a954bbe742975543ed49f8710d6ed80da54cdd))
+
+
 ## v0.30.0 (2026-08-01)
 
 ### Bug Fixes
