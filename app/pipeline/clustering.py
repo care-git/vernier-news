@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import spacy
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.article import Article
 from app.models.cluster import ArticleCluster, Cluster
+from app.models.entity import EntityMention
 from app.pipeline import tuning
 
 logger = logging.getLogger(__name__)
@@ -39,21 +41,6 @@ def _get_nlp() -> spacy.language.Language:
     return _nlp
 
 
-def extract_entities(text: str) -> list[str]:
-    """Run spaCy NER on the first 2000 chars and return deduplicated entity strings."""
-    doc = _get_nlp()(text[:2000])
-    seen: set[str] = set()
-    entities: list[str] = []
-    for ent in doc.ents:
-        if ent.label_ not in _ENTITY_LABELS:
-            continue
-        normalised = ent.text.strip().lower()
-        if len(normalised) > 2 and normalised not in seen:
-            seen.add(normalised)
-            entities.append(ent.text.strip())
-    return entities
-
-
 # Leading titles/honorifics stripped so "President Trump" and "Trump" match.
 _ENTITY_PREFIXES = ("the ", "mr ", "mrs ", "ms ", "dr ", "president ", "sir ", "prime minister ")
 
@@ -67,18 +54,98 @@ def _normalise_entity(entity: str) -> str:
     return text
 
 
-def _entity_overlap(a: list[str], b: list[str]) -> float:
-    """Overlap coefficient |A∩B| / min(|A|,|B|) over normalised entities.
+@dataclass(frozen=True)
+class Mention:
+    """One named entity as it appeared, at the position it appeared."""
+
+    surface_form: str
+    normalised: str
+    label: str
+    start_char: int
+
+
+def extract_mentions(text: str) -> list[Mention]:
+    """Run spaCy NER on the first 2000 chars and return every mention, with position.
+
+    Repeats are kept: how often and where an entity is mentioned is signal in its own
+    right, and it cannot be recovered once discarded. Clustering wants the deduplicated
+    view instead — see extract_entities.
+    """
+    doc = _get_nlp()(text[:2000])
+    return [
+        Mention(
+            surface_form=ent.text.strip(),
+            normalised=_normalise_entity(ent.text),
+            label=ent.label_,
+            start_char=ent.start_char,
+        )
+        for ent in doc.ents
+        if ent.label_ in _ENTITY_LABELS and len(ent.text.strip()) > 2
+    ]
+
+
+def entities_from_mentions(mentions: list[Mention]) -> list[str]:
+    """Deduplicated surface forms, which is what the cluster entity cache compares on.
+
+    Callers that also persist mentions should extract once and use this, rather than
+    calling extract_entities and paying for a second spaCy pass over the same text.
+    """
+    seen: set[str] = set()
+    entities: list[str] = []
+    for mention in mentions:
+        key = mention.surface_form.lower()
+        if key not in seen:
+            seen.add(key)
+            entities.append(mention.surface_form)
+    return entities
+
+
+def extract_entities(text: str) -> list[str]:
+    """Run spaCy NER on the first 2000 chars and return deduplicated entity strings."""
+    return entities_from_mentions(extract_mentions(text))
+
+
+def _entity_overlap(a: list[str], b: list[str]) -> tuple[float, int]:
+    """Return the overlap coefficient |A∩B| / min(|A|,|B|) and the shared-entity count.
 
     Overlap coefficient rather than Jaccard so a short entity list shared with a
     longer one isn't penalised by the union size — the old Jaccard term was
     systematically low and dragged genuinely related articles below threshold.
+
+    The coefficient alone is not enough, which is why the count comes back with it.
+    Dividing by the smaller set means the incoming article's entity count is almost
+    always the denominator, so a single shared name clears 0.30 whenever the article
+    has three or fewer entities — and the cluster side of the comparison accumulates
+    every entity it has ever seen, so the chance of sharing *something* rises with
+    cluster size. Callers require a minimum absolute count as well.
     """
     set_a = {_normalise_entity(e) for e in a} - {""}
     set_b = {_normalise_entity(e) for e in b} - {""}
     if not set_a or not set_b:
-        return 0.0
-    return len(set_a & set_b) / min(len(set_a), len(set_b))
+        return 0.0, 0
+    shared = len(set_a & set_b)
+    return shared / min(len(set_a), len(set_b)), shared
+
+
+async def record_mentions(article_id: int, mentions: list[Mention], db: AsyncSession) -> None:
+    """Persist an article's entity mentions, replacing any already held for it.
+
+    Replace rather than append so re-running extraction over an article — after a
+    model upgrade, or during a rebuild — converges instead of accumulating duplicates.
+    """
+    await db.execute(delete(EntityMention).where(EntityMention.article_id == article_id))
+    db.add_all(
+        [
+            EntityMention(
+                article_id=article_id,
+                surface_form=mention.surface_form,
+                normalised=mention.normalised,
+                label=mention.label,
+                start_char=mention.start_char,
+            )
+            for mention in mentions
+        ]
+    )
 
 
 async def assign_cluster(
@@ -128,9 +195,9 @@ async def assign_cluster(
         semantic_score = 1.0 - row.min_dist
         if semantic_score < t.join_semantic_mid:
             break  # remaining candidates are only further away — none can qualify
-        if semantic_score >= t.join_semantic_high or (
-            _entity_overlap(entities, row.entity_cache or []) >= t.join_entity_min
-        ):
+        overlap, shared = _entity_overlap(entities, row.entity_cache or [])
+        entity_corroborated = shared >= t.join_entity_min_shared and overlap >= t.join_entity_min
+        if semantic_score >= t.join_semantic_high or entity_corroborated:
             best_cluster_id = row.cluster_id
             best_score = semantic_score
             break
