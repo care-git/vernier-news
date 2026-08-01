@@ -14,7 +14,13 @@ from app.models.article import Article
 from app.models.outlet import Outlet
 from app.pipeline import tuning
 from app.pipeline.categorise import categorise_article
-from app.pipeline.clustering import assign_cluster, extract_entities, update_cluster_metadata
+from app.pipeline.clustering import (
+    assign_cluster,
+    entities_from_mentions,
+    extract_mentions,
+    record_mentions,
+    update_cluster_metadata,
+)
 from app.pipeline.dedup import persist_article
 from app.pipeline.ingestion.connectors import currents, gdelt, gnews, guardian, hackernews, nyt
 from app.pipeline.ingestion.rss import ingest_feed, ingest_opml, parse_opml
@@ -85,7 +91,9 @@ def ingest_feeds() -> dict:
 
                     # Recurring formats are stored but never story-clustered.
                     if db_article.content_type is None:
-                        entities = extract_entities(f"{article.title} {article.body}")
+                        mentions = extract_mentions(f"{article.title} {article.body}")
+                        await record_mentions(db_article.id, mentions, db)
+                        entities = entities_from_mentions(mentions)
                         cluster_id = await assign_cluster(
                             db_article.id,
                             db_article.embedding,
@@ -135,7 +143,9 @@ def sweep_gdelt() -> dict:
                     if db_article is None:
                         continue
                     if db_article.content_type is None:
-                        entities = extract_entities(f"{article.title} {article.body}")
+                        mentions = extract_mentions(f"{article.title} {article.body}")
+                        await record_mentions(db_article.id, mentions, db)
+                        entities = entities_from_mentions(mentions)
                         cluster_id = await assign_cluster(
                             db_article.id,
                             db_article.embedding,
@@ -191,7 +201,9 @@ def cluster_pass() -> dict:
             for article in articles:
                 try:
                     text = f"{article.title} {article.body or ''}"
-                    entities = extract_entities(text)
+                    mentions = extract_mentions(text)
+                    await record_mentions(article.id, mentions, db)
+                    entities = entities_from_mentions(mentions)
                     cluster_id = await assign_cluster(
                         article.id,
                         article.embedding,

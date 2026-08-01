@@ -30,7 +30,13 @@ from app.database import SessionLocal
 from app.models.article import Article
 from app.models.cluster import ArticleCluster, Cluster
 from app.pipeline import tuning
-from app.pipeline.clustering import assign_cluster, extract_entities, update_cluster_metadata
+from app.pipeline.clustering import (
+    assign_cluster,
+    entities_from_mentions,
+    extract_mentions,
+    record_mentions,
+    update_cluster_metadata,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger("recluster")
@@ -41,11 +47,13 @@ _BATCH = 500
 async def _rebuild(db) -> None:
     t = await tuning.refresh(db)
     logger.info(
-        "settings: candidate_max_dist=%.2f  join_high=%.2f  join_mid=%.2f  entity_min=%.2f",
+        "settings: candidate_max_dist=%.2f  join_high=%.2f  join_mid=%.2f  "
+        "entity_min=%.2f  entity_min_shared=%.0f",
         t.candidate_max_distance,
         t.join_semantic_high,
         t.join_semantic_mid,
         t.join_entity_min,
+        t.join_entity_min_shared,
     )
 
     await db.execute(delete(ArticleCluster))
@@ -89,7 +97,9 @@ async def _rebuild(db) -> None:
 
         for article_id in batch_ids:  # preserve publication order within the batch
             r = by_id[article_id]
-            entities = extract_entities(f"{r.title} {r.body or ''}")
+            mentions = extract_mentions(f"{r.title} {r.body or ''}")
+            await record_mentions(r.id, mentions, db)
+            entities = entities_from_mentions(mentions)
             # Metadata (counts, dormancy) is recomputed once at the end — skip per row.
             await assign_cluster(r.id, r.embedding, entities, r.published_at, r.wire_tier, db)
 
