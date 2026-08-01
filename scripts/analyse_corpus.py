@@ -12,6 +12,7 @@ pairwise sections compute that client-side with numpy.
 from __future__ import annotations
 
 import asyncio
+import re
 
 import numpy as np
 from sqlalchemy import func, select, text
@@ -20,11 +21,21 @@ from app.database import SessionLocal
 from app.models.article import Article
 from app.models.cluster import ArticleCluster, Cluster
 from app.models.outlet import Outlet
+from app.pipeline import tuning
 
 _PAIR_SAMPLE = 500  # articles pulled into memory for the random-pair baseline
 _CLUSTER_SAMPLE = 100  # multi-member clusters sampled for intra-cluster similarity
 _KNN_SAMPLE = 200  # articles probed against the full corpus via the index
 _THRESHOLDS = (0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65)
+# Outlets listed before the tail is summarised. Discovery-driven ingestion took this
+# table from 31 rows to thousands; printing them all buried the rest of the report.
+_TOP_OUTLETS = 40
+_TOP_MISSING_LEANING = 15
+# Clusters sampled per size bucket for the chaining measure. Stratified because the
+# 11+ bucket is under 1% of clusters and would barely appear in a flat sample —
+# while being exactly the population the measure exists to describe.
+_CHAIN_SAMPLE = 25
+_CHAIN_BUCKETS = (("2", 2, 2), ("3-5", 3, 5), ("6-10", 6, 10), ("11+", 11, 10**9))
 
 
 def section(title: str) -> None:
@@ -119,15 +130,28 @@ async def sources(db) -> None:
     ).all()
     total = sum(r.n for r in rows) or 1
     print(f"{'outlet':<28}{'country':<9}{'articles':>10}{'share':>8}   last seen")
-    for r in rows:
+    for r in rows[:_TOP_OUTLETS]:
         flag = "" if r.active else "  [inactive]"
         print(
             f"{r.name[:27]:<28}{(r.country or '-'):<9}{r.n:>10,}{r.n / total:>7.1%}   {r.last_seen}{flag}"
         )
 
-    silent = [r.name for r in rows if r.n == 0]
+    # Discovery-driven ingestion took the outlets table from 31 rows to thousands, so
+    # the tail is summarised rather than printed.
+    tail = rows[_TOP_OUTLETS:]
+    if tail:
+        tail_articles = sum(r.n for r in tail)
+        print(
+            f"\n… and {len(tail):,} further outlets holding {tail_articles:,} articles "
+            f"({tail_articles / total:.1%})"
+        )
+    print(
+        f"\nconcentration: top 10 outlets = {sum(r.n for r in rows[:10]) / total:.1%} of articles"
+    )
+
+    silent = sum(1 for r in rows if r.n == 0)
     if silent:
-        print(f"\noutlets that have never produced an article: {', '.join(silent)}")
+        print(f"outlets that have never produced an article: {silent:,}")
 
     section("3b. LANGUAGE DISTRIBUTION")
     langs = (
@@ -157,9 +181,11 @@ async def sources(db) -> None:
         )
     ).all()
     print(f"{'outlet':<28}{'articles':>10}{'% short':>10}{'avg body chars':>16}")
-    for r in rows:
+    for r in rows[:_TOP_OUTLETS]:
         pct = r.short / r.n if r.n else 0
         print(f"{r.name[:27]:<28}{r.n:>10,}{pct:>9.0%}{r.avg_len or 0:>16,}")
+    if len(rows) > _TOP_OUTLETS:
+        print(f"… and {len(rows) - _TOP_OUTLETS:,} further outlets")
 
 
 async def leaning(db) -> None:
@@ -173,10 +199,18 @@ async def leaning(db) -> None:
             )
         )
     ).all()
-    missing = [r.name for r in rows if r.lean is None]
-    print(f"outlets with leaning  : {sum(1 for r in rows if r.lean is not None)} / {len(rows)}")
+    missing = sorted((r for r in rows if r.lean is None), key=lambda r: r.n, reverse=True)
+    with_leaning = [r for r in rows if r.lean is not None]
+    covered = sum(r.n for r in with_leaning)
+    corpus = sum(r.n for r in rows) or 1
+    print(f"outlets with leaning  : {len(with_leaning):,} / {len(rows):,}")
+    print(f"articles covered      : {covered:,} / {corpus:,} ({covered / corpus:.1%})")
     if missing:
-        print(f"missing leaning       : {', '.join(missing)}")
+        # Ranked by article count: filling the top of this list moves the spectrum
+        # most. Listing thousands of names by hand is what discovery made obsolete.
+        print(f"\nlargest outlets missing leaning ({len(missing):,} in total):")
+        for r in missing[:_TOP_MISSING_LEANING]:
+            print(f"  {r.name[:40]:<42}{r.n:>8,} articles")
 
     buckets = {
         "left (<=-0.6)": 0,
@@ -200,6 +234,7 @@ async def leaning(db) -> None:
             buckets["right (>=0.6)"] += r.n
     weighted = sum(buckets.values()) or 1
     print("\narticle-weighted spectrum coverage (agnosticism check):")
+    print(f"(over the {weighted:,} articles that have leaning data, not the whole corpus)")
     for name, n in buckets.items():
         bar = "#" * round(40 * n / weighted)
         print(f"  {name:<16}{n:>8,}  {n / weighted:>6.1%}  {bar}")
@@ -280,9 +315,14 @@ async def clustering_vs_body(db) -> None:
         )
     ).all()
     print(f"\n{'outlet':<28}{'articles':>9}{'singleton %':>13}{'avg body':>10}")
-    for r in rows:
+    for r in rows[:_TOP_OUTLETS]:
         rate = r.singletons / r.n if r.n else 0
         print(f"{r.name[:27]:<28}{r.n:>9,}{rate:>12.0%}{r.avg_len or 0:>10,}")
+    if len(rows) > _TOP_OUTLETS:
+        print(f"… and {len(rows) - _TOP_OUTLETS:,} further outlets with 50+ articles")
+    print("\nRead this against the per-outlet rows, not the aggregate above: a corpus")
+    print("whose short-body class is dominated by one breadth source will show a gap")
+    print("that reflects that source's coverage overlap, not body length.")
 
 
 async def similarity_profile(db) -> None:
@@ -383,6 +423,74 @@ async def similarity_profile(db) -> None:
     print("consolidation merge distance: it estimates how much regrouping is available.")
 
 
+async def chaining(db) -> None:
+    """Measure how much of each cluster is held together only by intermediaries.
+
+    §7's pooled same-cluster percentiles cannot answer this: it counts every pair from
+    every sampled cluster, so a single 500-member cluster contributes 125,000 pairs and
+    swamps the statistic. Its value swings on which clusters happen to be drawn, which
+    makes it useless for comparing two runs.
+
+    This is per-cluster and stratified by size. A member pair scoring below
+    join_semantic_mid could never have been joined directly by any rule, so it exists
+    only through a chain — that fraction is the direct measure of single-linkage
+    chaining, and the number centroid matching has to move.
+    """
+    t = await tuning.refresh(db)
+    section("10. CHAINING BY CLUSTER SIZE")
+    print(
+        "Share of member pairs below the minimum join threshold "
+        f"({t.join_semantic_mid:.2f}) — pairs no"
+    )
+    print("rule could have produced directly, so they are held by intermediaries only.")
+    print("Diameter is a cluster's least-similar pair: how far apart its extremes sit.\n")
+    print(f"{'size':<10}{'clusters':>10}{'mean % chained':>17}{'median diameter':>18}")
+
+    for label, low, high in _CHAIN_BUCKETS:
+        ids = (
+            (
+                await db.execute(
+                    text(
+                        "select cluster_id from article_cluster group by cluster_id "
+                        "having count(*) between :low and :high order by random() limit :n"
+                    ),
+                    {"low": low, "high": high, "n": _CHAIN_SAMPLE},
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        chained: list[float] = []
+        diameters: list[float] = []
+        for cluster_id in ids:
+            members = (
+                await db.execute(
+                    select(Article.embedding)
+                    .join(ArticleCluster, ArticleCluster.article_id == Article.id)
+                    .where(ArticleCluster.cluster_id == cluster_id)
+                    .where(Article.embedding.isnot(None))
+                )
+            ).all()
+            if len(members) < 2:
+                continue
+            m = np.asarray([r[0] for r in members], dtype=np.float32)
+            sims = (m @ m.T)[np.triu_indices(len(m), k=1)]
+            chained.append(float((sims < t.join_semantic_mid).mean()))
+            diameters.append(float(sims.min()))
+
+        if not chained:
+            print(f"{label:<10}{0:>10}{'(none sampled)':>17}")
+            continue
+        print(
+            f"{label:<10}{len(chained):>10}{np.mean(chained):>16.0%}"
+            f"{np.median(diameters):>18.3f}"
+        )
+
+    print("\nChaining should rise with size if single-linkage is the mechanism. Centroid")
+    print("matching targets exactly this: compare the 11+ row across runs.")
+
+
 async def index_health(db) -> None:
     section("9. INDEX HEALTH")
     rows = (
@@ -412,7 +520,9 @@ async def index_health(db) -> None:
     )
     print("\nKNN query plan:")
     for line in plan:
-        print("  " + line)
+        # The plan echoes the full 1024-dimension probe vector, which carried no
+        # information and dwarfed every other section of the report.
+        print("  " + re.sub(r"'\[[-0-9.,e ]+\]'::vector", "'[…1024 dims…]'::vector", line))
     used = any("Index Scan" in line for line in plan)
     print(f"\n=> HNSW index {'IS' if used else 'is NOT'} being used for nearest-neighbour search")
 
@@ -431,6 +541,7 @@ async def main() -> None:
         await clustering_vs_body(db)
         await similarity_profile(db)
         await index_health(db)
+        await chaining(db)
         print("\nDone.\n")
 
 
