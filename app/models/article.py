@@ -46,6 +46,7 @@ class Article(Base):
         back_populates="article"
     )
     sightings: Mapped[list["ArticleSighting"]] = relationship(back_populates="article")
+    mentions: Mapped[list["EntityMention"]] = relationship(back_populates="article")  # noqa: F821
 
 
 class ArticleSighting(Base):
