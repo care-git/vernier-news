@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.29.0 (2026-08-01)
+
+### Bug Fixes
+
+- **db**: Store wire tier 4 explicitly so NULL means not computed
+  ([`5d658eb`](https://github.com/care-git/vernier-news/commit/5d658ebadf4c4414772c97c2e7c487d857fdb166))
+
+### Features
+
+- **pipeline**: Allow ingestion to defer embedding
+  ([`6894122`](https://github.com/care-git/vernier-news/commit/6894122ffa37711bb8c6017b2826970dba8528e1))
+
+- **scripts**: Add backwards GDELT historical backfill
+  ([`bbc4ca5`](https://github.com/care-git/vernier-news/commit/bbc4ca5f7bc7554891e1533829dfa2d7e905e445))
+
+
 ## v0.28.1 (2026-07-29)
 
 ### Bug Fixes
