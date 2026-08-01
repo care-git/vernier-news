@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.30.0 (2026-08-01)
+
+### Bug Fixes
+
+- **pipeline**: Require two shared entities to corroborate a cluster join
+  ([`479dfdd`](https://github.com/care-git/vernier-news/commit/479dfdd4f6ed063fbe2a0e1e9b544ebe89bec855))
+
+### Features
+
+- **db**: Add entity_mentions to persist NER output
+  ([`dc4b683`](https://github.com/care-git/vernier-news/commit/dc4b6833057da2dc3908c4bf8aabc1bcec780da8))
+
+- **pipeline**: Record entity mentions at ingest and on rebuild
+  ([`9cf67cc`](https://github.com/care-git/vernier-news/commit/9cf67ccf88845c3c9e10399abb6b6d7b8a1d1107))
+
+
 ## v0.29.0 (2026-08-01)
 
 ### Bug Fixes
