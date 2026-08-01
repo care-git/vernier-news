@@ -84,14 +84,22 @@ async def record_sighting(
     )
 
 
-async def is_duplicate(url: str, embedding: list[float], db: AsyncSession) -> bool:
+async def is_duplicate(url: str, embedding: list[float] | None, db: AsyncSession) -> bool:
     """Return True if this article already exists (by URL or near-identical content).
 
     Near-identical: cosine similarity > 0.99 against any article in the last 72 hours.
+
+    ``embedding`` is None when ingestion is deferring embedding (see persist_article),
+    in which case only the URL check runs. That is a weaker but not empty guarantee:
+    exact URLs still match, and classify_repeat has already caught same-outlet repeats
+    by headline and path without needing a vector at all.
     """
     url_check = await db.execute(select(Article.id).where(Article.url == url).limit(1))
     if url_check.scalar_one_or_none() is not None:
         return True
+
+    if embedding is None:
+        return False
 
     t = tuning.current()
     cutoff = datetime.now(UTC) - timedelta(hours=t.dedup_window_hours)
@@ -178,18 +186,28 @@ async def get_wire_tier(
     return 4, max(sim_6h, sim_3h, sim_4h)
 
 
-async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Article | None:
+async def persist_article(
+    article: NormalisedArticle, db: AsyncSession, *, embed: bool = True
+) -> Article | None:
     """Run the full dedup pipeline and persist the article if it is not a duplicate.
 
     Flow:
         1. Classify against this outlet's identical past headlines. If the same page is
            already stored under a different URL form, record the form as a sighting
            against it and return None — no second Article row.
-        2. Generate embedding from title + body excerpt
+        2. Generate embedding from title + body excerpt (unless deferred)
         3. Check for exact URL duplicate or near-identical content (returns None if found)
         4. Compute and log wire tier (Phase 1: log only, no collapsing)
         5. Write Article record to the database, flagging recurring formats so the
            caller can skip story clustering, and record its own URL as a sighting
+
+    ``embed=False`` stores the article without a vector, which is what makes a large
+    historical ingest affordable: an embedding plus its index entry costs roughly 10 KB
+    per article against 400 bytes for the record alone, and the vector is the one part
+    that can be recomputed at any time from stored text (scripts/reembed.py). Deferred
+    articles also skip wire-tier detection, which is vector-based, and cannot be
+    clustered until they are embedded — both callers and cluster_pass filter on
+    ``embedding IS NOT NULL``.
 
     Returns the saved Article ORM object, or None if the article was a duplicate.
     """
@@ -206,13 +224,17 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
     if content_type == CONTENT_TYPE_RECURRING:
         logger.info("recurring format (not clustered): %s — %s", article.title, article.url)
 
-    embedding = generate_embedding(embedding_text(article.title, article.body))
+    embedding = generate_embedding(embedding_text(article.title, article.body)) if embed else None
 
     if await is_duplicate(article.url, embedding, db):
         logger.debug("duplicate skipped: %s", article.url)
         return None
 
-    tier, similarity = await get_wire_tier(article, embedding, db)
+    # Wire tier is derived from vector similarity, so it stays NULL — meaning "not yet
+    # computed" — until the article is embedded.
+    wire_tier = None
+    if embedding is not None:
+        wire_tier, _ = await get_wire_tier(article, embedding, db)
 
     db_article = Article(
         url=article.url,
@@ -226,7 +248,7 @@ async def persist_article(article: NormalisedArticle, db: AsyncSession) -> Artic
         collected_at=article.collected_at,
         collection_source=article.collection_source,
         wire_flag=False,  # activated in Phase 3 calibration
-        wire_tier=tier if tier < 4 else None,
+        wire_tier=wire_tier,
         content_type=content_type,
         embedding=embedding,
     )
