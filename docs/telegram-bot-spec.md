@@ -144,7 +144,8 @@ tests/bot/            # unit tests (formatting, admin_client, config — no tele
 5. Verify allowed/denied behaviour and all four commands live.
 6. `systemctl --user stop openclaw-gateway && systemctl --user disable openclaw-gateway`;
    remove the OpenClaw install if desired.
-7. Keep `openclaw/skills/` in the repo as a record of the endpoint contract.
+7. `openclaw/skills/` was kept briefly as a record of the endpoint contract, then removed
+   from the repo once the bot had settled.
 
 ## Cost
 
