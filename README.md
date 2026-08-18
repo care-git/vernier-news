@@ -117,8 +117,8 @@ These are known and documented in keeping with the project's principle of transp
   single linkage chains loosely-related articles into mega-clusters. The planned fix is centroid
   matching. A separate ~6–14% of articles are under-grouped, addressable by threshold calibration.
 - **A high singleton rate is mostly legitimate.** ~84% of clusters hold one article, which looks
-  like a bug but isn't, thankfully. Singleton rate tracks coverage overlap, and it has just come 
-  about that there are more niche outlets producing unique stories than I anticipated. 
+  like a bug but isn't, thankfully. Singleton rate tracks coverage overlap, and there are simply
+  more niche outlets producing unique stories than I initially anticipated. 
   Cluster coherence and under-grouping are the metrics that matter here, not the singleton count.
 - **The corpus is politically skewed.** As of the last audit the article-weighted spectrum ran roughly
   53% centre-left, 45% centre, 1% centre-right, with no genuinely far-left or far-right sources.
