@@ -86,7 +86,7 @@ than UI.
 - **Telegram control bot**: deterministic and LLM-free: `/health`, `/ingest`, `/clusters`,
   `/sources`, plus a daily health digest and threshold alerts for queue depth, ingestion stall and
   API-unreachable. Replaced an earlier LLM agent gateway, which cost far more than four fixed
-  operations justified and wasn't cool enough to warran the additional expense and complexity.
+  operations justified and wasn't cool enough to warrant the additional expense and complexity.
 
 **Client - Flutter Web PWA, runs locally against the live API (not publicly deployed):**
 
@@ -103,7 +103,7 @@ than UI.
 
 ## Known limitations
 
-These are known and documented to inkeep with the project's principle of transparency.
+These are known and documented in keeping with the project's principle of transparency.
 
 - **The digest is deliberately frozen.** It groups clusters by category, and categorisation has
   never run in production (the original design needed a 7B local LLM that does not fit an 8 GB
@@ -117,14 +117,14 @@ These are known and documented to inkeep with the project's principle of transpa
   single linkage chains loosely-related articles into mega-clusters. The planned fix is centroid
   matching. A separate ~6–14% of articles are under-grouped, addressable by threshold calibration.
 - **A high singleton rate is mostly legitimate.** ~84% of clusters hold one article, which looks
-  like a bug but isn't, thankfully. Singleton rate tracks coverage overlap, and so it just has come 
-  about that there are more niche and investigative outlets producing unique stories than I anticipated. 
+  like a bug but isn't, thankfully. Singleton rate tracks coverage overlap, and it has just come 
+  about that there are more niche outlets producing unique stories than I anticipated. 
   Cluster coherence and under-grouping are the metrics that matter here, not the singleton count.
 - **The corpus is politically skewed.** As of the last audit the article-weighted spectrum ran roughly
   53% centre-left, 45% centre, 1% centre-right, with no genuinely far-left or far-right sources.
   Every downstream "spread" visualisation is only as agnostic as that distribution, so closing the
-  curation gap is another key task I am looking at, with the primary issue being pulling from 
-  more sources gets vastly more expensive than is realistic for me currently.
+  curation gap is another key task I am looking at, with the primary issue being that pulling from 
+  more sources gets vastly more expensive than is feasible for me currently.
 - **Roughly half of articles are RSS summaries only** (< 200 characters of body). This does not
   harm clustering, but it will cap categorisation depth until full-text collection lands in
   Phase 4.
